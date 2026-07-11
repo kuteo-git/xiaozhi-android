@@ -1,0 +1,137 @@
+package info.dourok.voicebot.data
+
+import android.content.Context
+
+/**
+ * Runtime, persisted settings the on-device control panel can change without rebuilding.
+ * Defaults come from [AppConfig]. Call [init] once (VApplication). Read with the same static
+ * style as AppConfig (e.g. Settings.micGain). Some changes apply live (eq/volume), others need an
+ * app restart (sample rate / mic source).
+ */
+object Settings {
+    private lateinit var prefs: android.content.SharedPreferences
+
+    fun init(context: Context) {
+        prefs = context.getSharedPreferences("voicebot_settings", Context.MODE_PRIVATE)
+    }
+
+    var wakeSensitivity: String
+        get() = prefs.getString("wake_sensitivity", AppConfig.WAKE_SENSITIVITY)!!
+        set(v) = prefs.edit().putString("wake_sensitivity", v).apply()
+
+    /** Wake nhạy khi đang nói/nghe nhạc (thấp hơn để TTS/nhạc không tự kích wake). */
+    var wakeSensitivitySpeaking: String
+        get() = prefs.getString("wake_sensitivity_speaking", AppConfig.WAKE_SENSITIVITY_SPEAKING)!!
+        set(v) = prefs.edit().putString("wake_sensitivity_speaking", v).apply()
+
+    var micGain: Float
+        get() = prefs.getFloat("mic_gain", AppConfig.MIC_GAIN)
+        set(v) = prefs.edit().putFloat("mic_gain", v).apply()
+
+    /** AudioRecord input source (MediaRecorder.AudioSource int). Thử far-field; cần restart capture. */
+    var micSource: Int
+        get() = prefs.getInt("mic_source", AppConfig.MIC_SOURCE)
+        set(v) = prefs.edit().putInt("mic_source", v).apply()
+
+    /** AGC luồng STT (trước opus, không đụng wake). Bật/tắt + target/maxGain chỉnh live, áp từ lần wake sau. */
+    var agcEnabled: Boolean
+        get() = prefs.getBoolean("agc_enabled", AppConfig.AGC_ENABLED)
+        set(v) = prefs.edit().putBoolean("agc_enabled", v).apply()
+    var agcTarget: Float
+        get() = prefs.getFloat("agc_target", AppConfig.AGC_TARGET)
+        set(v) = prefs.edit().putFloat("agc_target", v).apply()
+    var agcMaxGain: Float
+        get() = prefs.getFloat("agc_max_gain", AppConfig.AGC_MAX_GAIN)
+        set(v) = prefs.edit().putFloat("agc_max_gain", v).apply()
+
+    /** Mã LED theo trạng thái (CSV code sendMsg 4096). Chỉnh live qua panel để sweep màu/hiệu ứng. */
+    var ledIdle: String
+        get() = prefs.getString("led_idle", AppConfig.LED_IDLE)!!
+        set(v) = prefs.edit().putString("led_idle", v).apply()
+    var ledListening: String
+        get() = prefs.getString("led_listening", AppConfig.LED_LISTENING)!!
+        set(v) = prefs.edit().putString("led_listening", v).apply()
+    var ledSpeaking: String
+        get() = prefs.getString("led_speaking", AppConfig.LED_SPEAKING)!!
+        set(v) = prefs.edit().putString("led_speaking", v).apply()
+    var ledMusic: String
+        get() = prefs.getString("led_music", AppConfig.LED_MUSIC)!!
+        set(v) = prefs.edit().putString("led_music", v).apply()
+
+    /** System STREAM_MUSIC volume, 0..100 (-1 = don't override). */
+    var volume: Int
+        get() = prefs.getInt("volume", -1)
+        set(v) = prefs.edit().putInt("volume", v).apply()
+
+    /** Equalizer on/off. */
+    var eqEnabled: Boolean
+        get() = prefs.getBoolean("eq_enabled", false)
+        set(v) = prefs.edit().putBoolean("eq_enabled", v).apply()
+
+    /** Per-band gain in millibels (one entry per equalizer band), CSV-encoded. */
+    var eqBands: IntArray
+        get() = prefs.getString("eq_bands", "")!!
+            .split(",").mapNotNull { it.trim().toIntOrNull() }.toIntArray()
+        set(v) = prefs.edit().putString("eq_bands", v.joinToString(",")).apply()
+
+    /** Playback sample rate (24000 / 48000). Applied on app restart; must match the server. */
+    var playbackSampleRate: Int
+        get() = prefs.getInt("playback_sr", AppConfig.PLAYBACK_SAMPLE_RATE)
+        set(v) = prefs.edit().putInt("playback_sr", v).apply()
+
+    // ── Generic client config (Setup tab) ──────────────────────────────────
+    var llmProvider: String
+        get() = prefs.getString("llm_provider", "")!!
+        set(v) = prefs.edit().putString("llm_provider", v).apply()
+    var llmBaseUrl: String
+        get() = prefs.getString("llm_base_url", "")!!
+        set(v) = prefs.edit().putString("llm_base_url", v).apply()
+    var llmApiKey: String
+        get() = prefs.getString("llm_api_key", "")!!
+        set(v) = prefs.edit().putString("llm_api_key", v).apply()
+    var llmModel: String
+        get() = prefs.getString("llm_model", "")!!
+        set(v) = prefs.edit().putString("llm_model", v).apply()
+    var llmTransport: String
+        get() = prefs.getString("llm_transport", "openai")!!
+        set(v) = prefs.edit().putString("llm_transport", v).apply()
+
+    var otaUrl: String
+        get() = prefs.getString("ota_url", "")!!
+        set(v) = prefs.edit().putString("ota_url", v).apply()
+    var wsUrl: String
+        get() = prefs.getString("ws_url", "")!!
+        set(v) = prefs.edit().putString("ws_url", v).apply()
+    var wsToken: String
+        get() = prefs.getString("ws_token", "")!!
+        set(v) = prefs.edit().putString("ws_token", v).apply()
+
+    /** Wake engine: "alexa" (snowboy) or "nabu" (microWakeWord). Changing needs an app restart. */
+    var wakeEngine: String
+        get() = prefs.getString("wake_engine", "alexa")!!
+        set(v) = prefs.edit().putString("wake_engine", v).apply()
+
+    // ── Home Assistant (Setup tab) ──────────────────────────────────────────
+    var haUrl: String
+        get() = prefs.getString("ha_url", "")!!
+        set(v) = prefs.edit().putString("ha_url", v).apply()
+    var haToken: String
+        get() = prefs.getString("ha_token", "")!!
+        set(v) = prefs.edit().putString("ha_token", v).apply()
+    /** Device list: newline of `location,name,entity_id` lines (fed to the prompt server-side). */
+    var haDevices: String
+        get() = prefs.getString("ha_devices", "")!!
+        set(v) = prefs.edit().putString("ha_devices", v).apply()
+
+    /** Persona ghi đè server cho phiên này (Assistant card). Trống = server dùng prompt: mặc định. */
+    var customPrompt: String
+        get() = prefs.getString("custom_prompt", "")!!
+        set(v) = prefs.edit().putString("custom_prompt", v).apply()
+}
+
+/** Mask an API key for read-back: empty stays empty; <=4 chars fully masked; else ••••<last4>. */
+fun maskApiKey(key: String?): String {
+    if (key.isNullOrEmpty()) return ""
+    if (key.length <= 4) return "••••"
+    return "••••" + key.takeLast(4)
+}

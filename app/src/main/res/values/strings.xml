@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">voicebot-client-android</string>
+    <string name="label_conn">连接</string>
+</resources>

@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>R1 Control</title>
+<!-- Inject theme trước khi paint để tránh flash -->
+<script>(function(){try{var t=localStorage.getItem('r1-theme')||'dark';document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+<style>
+/* ── DARK (default) ─────────────────────────────── */
+:root{
+  --bg:#07090e;--bg2:#0b0d14;--card:#0f1219;--card2:#131820;
+  --fg:#cdd3e0;--mut:#7b8aad;--line:#1a1f2d;
+  --a1:#e8453c;--a2:#ff7a52;
+  --grad:linear-gradient(135deg,#e8453c,#ff7a52);
+  --grad-dim:rgba(232,69,60,.12);
+  --ok:#22c55e;--err:#ef4444;
+  --body-bg:var(--bg);
+}
+/* ── LIGHT ──────────────────────────────────────── */
+[data-theme=light]{
+  --bg:#f2f4fa;--bg2:#ffffff;--card:#ffffff;--card2:#f7f8fc;
+  --fg:#0d1020;--mut:#5060a0;--line:#dde0ee;
+  --a1:#e8453c;--a2:#ff7a52;
+  --grad:linear-gradient(135deg,#e8453c,#ff7a52);
+  --grad-dim:rgba(232,69,60,.10);
+  --ok:#16a34a;--err:#dc2626;
+  --body-bg:#f2f4fa;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0;}
+*{scrollbar-width:thin;scrollbar-color:#1c2235 transparent;}
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:#1c2235;border-radius:4px;}
+[data-theme=light] *{scrollbar-color:#c8cfe8 transparent;}
+[data-theme=light] ::-webkit-scrollbar-thumb{background:#c8cfe8;}
+html,body{height:100%;}
+body{background:var(--body-bg);color:var(--fg);
+  font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  display:flex;justify-content:center;
+  transition:background .3s,color .25s;}
+
+/* ── APP FRAME ─────────────────────────────────── */
+.app{width:100%;max-width:460px;height:100vh;height:100dvh;display:flex;flex-direction:column;
+  background:var(--bg2);border-left:1px solid var(--line);border-right:1px solid var(--line);
+  transition:background .3s,border-color .3s;}
+.panes{flex:1;display:flex;min-height:0;}
+@media(min-width:780px){
+  .app{max-width:720px;border-radius:12px;height:94vh;height:94dvh;margin-top:3vh;overflow:hidden;
+    box-shadow:0 24px 80px rgba(0,0,0,.8);}
+  [data-theme=light] .app{box-shadow:0 16px 60px rgba(10,13,26,.15);}
+}
+
+/* ── HEADER ────────────────────────────────────── */
+.head{display:flex;align-items:center;gap:10px;padding:13px 15px 11px;
+  border-bottom:1px solid var(--line);}
+.logo{width:32px;height:32px;border-radius:8px;background:var(--grad);display:grid;
+  place-items:center;font-size:16px;flex-shrink:0;
+  box-shadow:0 4px 16px rgba(232,69,60,.3);}
+.head-text h1{font-size:15px;font-weight:700;letter-spacing:-.1px;}
+.head-text .sub{font-size:11px;color:var(--mut);margin-top:1px;}
+.head-right{margin-left:auto;display:flex;align-items:center;gap:8px;}
+/* theme toggle */
+.thm-btn{border:0;background:none;cursor:pointer;font-size:16px;padding:4px;
+  border-radius:7px;line-height:1;transition:background .15s;}
+.thm-btn:hover{background:var(--grad-dim);}
+/* status */
+.status{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--mut);}
+.status-dot{width:7px;height:7px;border-radius:50%;background:var(--ok);
+  box-shadow:0 0 8px rgba(34,197,94,.55);transition:.3s;}
+.status-dot.off{background:#2e3545;box-shadow:none;}
+[data-theme=light] .status-dot.off{background:#c0c8d8;}
+
+/* ── TABS ──────────────────────────────────────── */
+.seg{display:flex;gap:4px;margin:10px 13px 2px;padding:4px;
+  background:var(--card2);border:1px solid var(--line);border-radius:14px;}
+.seg button{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
+  border:0;background:none;color:var(--mut);padding:9px 10px;border-radius:10px;
+  font-size:13px;font-weight:600;letter-spacing:.1px;transition:.18s;}
+.seg button svg{width:15px;height:15px;flex-shrink:0;}
+.seg button.on{color:#fff;background:var(--grad);box-shadow:0 4px 14px rgba(232,69,60,.28);}
+.seg button:active{background:rgba(128,128,128,.1);}
+.seg button.on:active{background:var(--grad);}
+
+.page{flex:1;overflow-y:auto;display:none;flex-direction:column;}
+.page.on{display:flex;}
+
+/* ── CHAT: floating button + right-side slide-in drawer ─────────── */
+#chatFab{position:fixed;right:18px;bottom:18px;z-index:150;display:flex;align-items:center;gap:7px;
+  border:0;border-radius:26px;padding:12px 17px;background:var(--grad);color:#fff;font-size:13px;
+  font-weight:700;cursor:pointer;box-shadow:0 8px 24px rgba(232,69,60,.42);
+  transition:transform .15s,opacity .2s;}
+#chatFab:active{transform:scale(.93);}
+#chatFab svg{width:17px;height:17px;}
+body.chat-open #chatFab{opacity:0;pointer-events:none;}
+#chatBackdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:158;opacity:0;visibility:hidden;
+  transition:opacity .22s,visibility .22s;}
+#chatBackdrop.open{opacity:1;visibility:visible;}
+#chatDrawer{position:fixed;top:0;right:0;width:400px;max-width:92vw;height:100vh;height:100dvh;z-index:160;
+  background:var(--bg2);border-left:1px solid var(--line);box-shadow:-14px 0 44px rgba(0,0,0,.5);
+  display:flex;flex-direction:column;transform:translateX(100%);transition:transform .24s ease;
+  overscroll-behavior:contain;}
+#chatDrawer.open{transform:translateX(0);}
+.chat-head{display:flex;align-items:center;gap:9px;padding:13px 14px;border-bottom:1px solid var(--line);}
+.chat-head .logo{width:26px;height:26px;font-size:14px;box-shadow:none;}
+.chat-head h3{font-size:14px;font-weight:700;flex:1;}
+.chat-close{border:0;background:none;color:var(--mut);font-size:19px;cursor:pointer;padding:2px 7px;
+  border-radius:7px;line-height:1;}
+.chat-close:active{background:var(--grad-dim);}
+
+/* ── SETTINGS ──────────────────────────────────── */
+.settings{padding:10px 13px 32px;}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+  padding:13px;margin-bottom:9px;transition:background .3s,border-color .3s;}
+.ch{display:flex;align-items:center;gap:9px;margin-bottom:10px;}
+.ch h2{font-size:10.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.9px;font-weight:700;}
+.icon-badge{width:26px;height:26px;border-radius:8px;flex-shrink:0;display:grid;place-items:center;color:#fff;}
+.icon-badge svg{width:15px;height:15px;}
+.ib-amp{background:linear-gradient(135deg,#f59e0b,#fb923c);}
+.ib-voice{background:linear-gradient(135deg,#ec4899,#f472b6);}
+.ib-eq{background:linear-gradient(135deg,#8b5cf6,#a78bfa);}
+.ib-wake{background:linear-gradient(135deg,#3b82f6,#60a5fa);}
+.ib-agc{background:linear-gradient(135deg,#06b6d4,#22d3ee);}
+.ib-mic{background:linear-gradient(135deg,#22c55e,#4ade80);}
+.ib-led{background:linear-gradient(135deg,#eab308,#facc15);}
+.ib-sys{background:linear-gradient(135deg,#64748b,#94a3b8);}
+.ib-ai{background:linear-gradient(135deg,#6366f1,#818cf8);}
+.ib-srv{background:linear-gradient(135deg,#0ea5e9,#38bdf8);}
+.icon-mini{width:20px;height:20px;border-radius:6px;flex-shrink:0;display:grid;place-items:center;color:#fff;}
+.icon-mini svg{width:12px;height:12px;}
+.row label{display:flex;align-items:center;gap:6px;}
+.row label.wide{flex:0 0 132px;}
+.row{display:flex;align-items:center;gap:10px;margin:11px 0;}
+.row label{flex:0 0 90px;color:var(--fg);font-size:13px;opacity:.75;}
+.row .val{flex:0 0 46px;text-align:right;font-weight:700;font-size:13px;
+  font-variant-numeric:tabular-nums;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.hint{font-size:11px;color:var(--mut);line-height:1.5;padding:3px 0 1px;}
+
+/* ── RANGE horizontal ───────────────────────────── */
+input[type=range]{-webkit-appearance:none;appearance:none;flex:1;height:4px;border-radius:4px;
+  background:var(--line);outline:none;}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:17px;height:17px;border-radius:50%;
+  background:#fff;border:2.5px solid var(--a1);
+  box-shadow:0 0 0 3px rgba(232,69,60,.15);cursor:pointer;}
+input[type=range]:active::-webkit-slider-thumb{box-shadow:0 0 0 5px rgba(232,69,60,.2);}
+
+/* EQ vertical — rotate horizontal slider trong wrapper để thumb y hệt */
+.eq-wrap{position:relative;width:24px;height:108px;flex-shrink:0;}
+.vert{
+  -webkit-appearance:none;appearance:none;
+  position:absolute;width:108px;height:24px;
+  left:0;top:0;
+  transform:rotate(-90deg) translateX(-108px);
+  transform-origin:0 0;
+  background:var(--line);border-radius:4px;outline:none;
+  /* thumb kế thừa từ input[type=range]::-webkit-slider-thumb */
+}
+
+/* ── TOGGLE ────────────────────────────────────── */
+.sw{margin-left:auto;position:relative;width:44px;height:26px;flex-shrink:0;}
+.sw input{opacity:0;width:0;height:0;}
+.sw span{position:absolute;inset:0;background:var(--line);border-radius:14px;
+  border:1px solid var(--line);transition:.22s;}
+.sw span:before{content:'';position:absolute;width:20px;height:20px;left:2px;top:2px;
+  background:var(--mut);border-radius:50%;transition:.22s;}
+.sw input:checked+span{background:var(--grad);border-color:transparent;}
+.sw input:checked+span:before{transform:translateX(18px);background:#fff;}
+
+/* ── SEGSEL ────────────────────────────────────── */
+.segsel{display:flex;gap:3px;background:var(--bg);border:1px solid var(--line);
+  border-radius:8px;padding:3px;}
+.segsel button{flex:1;border:0;background:none;color:var(--mut);padding:6px 4px;
+  border-radius:6px;font-weight:600;font-size:12px;cursor:pointer;transition:.15s;}
+.segsel button.on{background:var(--grad);color:#fff;}
+
+/* ── SELECT ────────────────────────────────────── */
+select{background:var(--bg);color:var(--fg);border:1px solid var(--line);
+  border-radius:8px;padding:7px 10px;font-size:13px;outline:none;flex:1;}
+select:focus{border-color:rgba(232,69,60,.45);}
+
+/* ── LED INPUTS ─────────────────────────────────── */
+.codein{flex:1;background:var(--bg);color:var(--fg);border:1px solid var(--line);
+  border-radius:7px;padding:6px 9px;font-size:12.5px;min-width:0;outline:none;
+  font-family:ui-monospace,"SF Mono","Fira Code",monospace;}
+.codein:focus{border-color:rgba(232,69,60,.45);}
+.codein-area{flex:1;background:var(--bg);color:var(--fg);border:1px solid var(--line);
+  border-radius:7px;padding:8px 10px;font-size:13px;min-width:0;outline:none;resize:vertical;
+  min-height:110px;line-height:1.5;font-family:inherit;}
+.codein-area:focus{border-color:rgba(232,69,60,.45);}
+.tbtn{flex:0 0 32px;background:var(--grad-dim);color:var(--a1);
+  border:1px solid rgba(232,69,60,.2);border-radius:7px;padding:5px;
+  font-weight:700;font-size:13px;cursor:pointer;transition:.15s;}
+.tbtn:active{background:rgba(232,69,60,.25);}
+
+/* ── EQ LABELS ──────────────────────────────────── */
+.eqrow{display:flex;gap:4px;align-items:flex-end;padding-top:6px;}
+.eqband{flex:1;text-align:center;display:flex;flex-direction:column;align-items:center;gap:4px;}
+.eqf{font-size:10px;color:var(--mut);}
+.eqg{font-size:11px;font-weight:700;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;min-height:14px;}
+
+/* ── BUTTONS ────────────────────────────────────── */
+.btn{width:100%;border:0;border-radius:10px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;transition:.15s;}
+.btn.warn{background:rgba(239,68,68,.08);color:var(--err);border:1px solid rgba(239,68,68,.18);}
+.btn.warn:active{background:rgba(239,68,68,.16);}
+.btn.rec{background:var(--grad-dim);color:var(--a1);border:1px solid rgba(232,69,60,.18);}
+.btn.rec:not(:disabled):active{background:rgba(232,69,60,.22);}
+.btn:disabled{opacity:.35;cursor:not-allowed;}
+
+/* ── CHAT ────────────────────────────────────────── */
+#chat{flex:1;overflow-y:auto;padding:13px;display:flex;flex-direction:column;gap:8px;}
+.bubble-wrap{display:flex;flex-direction:column;gap:2px;max-width:82%;}
+.bubble-wrap.user{align-self:flex-end;align-items:flex-end;}
+.bubble-wrap.assistant{align-self:flex-start;align-items:flex-start;}
+.b{padding:10px 14px;font-size:14px;line-height:1.45;word-wrap:break-word;animation:pop .16s ease;}
+.bubble-wrap.assistant .b{background:var(--card);border:1px solid var(--line);
+  border-radius:16px 16px 16px 4px;}
+.bubble-wrap.user .b{background:var(--grad);color:#fff;border-radius:16px 16px 4px 16px;}
+.btime{font-size:10px;color:var(--mut);padding:0 4px;}
+@keyframes pop{from{opacity:0;transform:translateY(5px) scale(.97);}to{opacity:1;transform:none;}}
+.empty{margin:auto;color:var(--mut);text-align:center;font-size:13px;line-height:1.9;}
+
+/* ── INPUT BAR ──────────────────────────────────── */
+.inbar{display:flex;gap:8px;padding:10px 12px;
+  background:color-mix(in srgb,var(--bg2) 90%,transparent);
+  backdrop-filter:blur(12px);border-top:1px solid var(--line);}
+.inbar input{flex:1;background:var(--card);color:var(--fg);border:1px solid var(--line);
+  border-radius:20px;padding:10px 14px;font-size:14px;outline:none;transition:.18s;}
+.inbar input:focus{border-color:rgba(232,69,60,.45);box-shadow:0 0 0 3px rgba(232,69,60,.1);}
+.inbar button{flex:0 0 42px;height:42px;border:0;border-radius:50%;background:var(--grad);
+  color:#fff;font-size:17px;cursor:pointer;box-shadow:0 4px 14px rgba(232,69,60,.35);
+  transition:transform .1s,box-shadow .1s;display:grid;place-items:center;}
+.inbar button:active{transform:scale(.9);box-shadow:0 2px 8px rgba(232,69,60,.2);}
+</style>
+</head>
+<body>
+<div class="app">
+
+<div class="head">
+  <div class="logo">🤖</div>
+  <div class="head-text">
+    <h1>R1 Control</h1>
+    <div class="sub">PHICOMM R1 · Alexa</div>
+  </div>
+  <div class="head-right">
+    <button class="thm-btn" id="thmBtn" onclick="toggleTheme()" title="Đổi theme">🌙</button>
+    <div class="status"><div class="status-dot" id="sti"></div><span id="st">online</span></div>
+  </div>
+</div>
+
+<div class="seg">
+  <button id="tset" class="on" onclick="tab('set')"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="10" cy="10" r="3"/><circle cx="10" cy="10" r="1" fill="currentColor" stroke="none"/><line x1="10" y1="2" x2="10" y2="4.2"/><line x1="10" y1="15.8" x2="10" y2="18"/><line x1="2" y1="10" x2="4.2" y2="10"/><line x1="15.8" y1="10" x2="18" y2="10"/><line x1="4.6" y1="4.6" x2="6.1" y2="6.1"/><line x1="13.9" y1="13.9" x2="15.4" y2="15.4"/><line x1="15.4" y1="4.6" x2="13.9" y2="6.1"/><line x1="6.1" y1="13.9" x2="4.6" y2="15.4"/></svg>Settings</button>
+  <button id="tsetup" onclick="tab('setup')"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M10 3v4M10 13v4M3 10h4M13 10h4"/><circle cx="10" cy="10" r="2.2"/></svg>Setup</button>
+</div>
+
+<div class="panes">
+<!-- SETTINGS -->
+<div id="pset" class="page on">
+  <div class="settings">
+    <div class="card">
+      <div class="ch"><span class="icon-badge ib-amp"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h3l5-4v12l-5-4H3z" fill="currentColor" stroke="none"/><path d="M14 7c1 1 1 5 0 6"/><path d="M16.5 5c2 2 2 8 0 10"/></svg></span><h2>Âm thanh</h2></div>
+      <div class="row"><label>Âm lượng</label><input type="range" id="vol" min="0" max="100"><span class="val" id="volv">–</span></div>
+      <div class="hint">Kéo để chỉnh âm lượng loa. Áp dụng ngay, không cần restart.</div>
+    </div>
+    <div class="card">
+      <div class="ch"><span class="icon-badge ib-voice"><svg viewBox="0 0 20 20" fill="currentColor"><rect x="2" y="7" width="2.2" height="6" rx="1.1"/><rect x="6.3" y="4" width="2.2" height="12" rx="1.1"/><rect x="10.6" y="1" width="2.2" height="18" rx="1.1"/><rect x="14.9" y="4" width="2.2" height="12" rx="1.1"/></svg></span><h2>Giọng đọc</h2></div>
+      <div class="row"><label>Giọng</label><select id="voice" style="flex:1"><option>(đang tải…)</option></select></div>
+      <div class="hint">10 giọng VieNeu — nữ và nam, nhiều phong cách. Áp dụng từ câu trả lời kế tiếp.</div>
+    </div>
+    <div class="card">
+      <div class="ch"><span class="icon-badge ib-eq"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><line x1="5" y1="2" x2="5" y2="18"/><circle cx="5" cy="7" r="1.8" fill="currentColor" stroke="none"/><line x1="10" y1="2" x2="10" y2="18"/><circle cx="10" cy="13" r="1.8" fill="currentColor" stroke="none"/><line x1="15" y1="2" x2="15" y2="18"/><circle cx="15" cy="9" r="1.8" fill="currentColor" stroke="none"/></svg></span><h2>Equalizer</h2><label class="sw"><input type="checkbox" id="eqon"><span></span></label></div>
+      <div class="eqrow" id="eq"></div>
+      <div class="hint">Chỉnh âm sắc 5 dải tần (±15 dB). Mặc định tắt — bật để boost bass hoặc treble theo ý thích. Áp dụng ngay.</div>
+    </div>
+    <div class="card">
+      <div class="ch"><span class="icon-badge ib-wake"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="4" cy="16" r="1.3" fill="currentColor" stroke="none"/><path d="M7 13a6 6 0 018 0"/><path d="M9.3 15.3a3 3 0 014 0"/></svg></span><h2>Wake word</h2></div>
+      <div class="row"><label>Độ nhạy</label><input type="range" id="ws" min="0" max="1" step="0.05"><span class="val" id="wsv">–</span></div>
+      <div class="hint">Mức 0.5 là cân bằng. Tăng nếu robot không nghe thấy "Alexa", giảm nếu bị tự thức khi TV đang bật.</div>
+      <div class="row"><label>Khi phát âm</label><input type="range" id="wss" min="0" max="1" step="0.05"><span class="val" id="wssv">–</span></div>
+      <div class="hint">Độ nhạy riêng khi robot đang nói hoặc phát nhạc. Nên đặt thấp hơn độ nhạy bình thường để tránh tự thức.</div>
+      <div class="row"><label>Nguồn mic</label>
+        <select id="msrc" style="flex:1">
+          <option value="6">VOICE_RECOGNITION (6)</option>
+          <option value="7">VOICE_COMMUNICATION (7)</option>
+          <option value="1">MIC thô (1)</option>
+          <option value="0">DEFAULT (0)</option>
+          <option value="5">CAMCORDER (5)</option>
+        </select></div>
+      <div class="hint">Nguồn thu âm phần cứng. Mặc định VOICE_RECOGNITION (6) — trên R1 các nguồn cho tín hiệu tương đương nhau. Đổi cần restart app.</div>
+    </div>
+    <div class="card">
+      <div class="ch"><span class="icon-badge ib-agc"><svg viewBox="0 0 20 20" fill="currentColor"><rect x="2" y="14" width="2.4" height="4" rx="1"/><rect x="6.2" y="11" width="2.4" height="7" rx="1"/><rect x="10.4" y="7" width="2.4" height="11" rx="1"/><rect x="14.6" y="3" width="2.4" height="15" rx="1"/></svg></span><h2>Khuếch đại mic (AGC)</h2><label class="sw"><input type="checkbox" id="agc"><span></span></label></div>
+      <div class="row"><label>Mức đích</label><input type="range" id="agct" min="0.1" max="0.6" step="0.05"><span class="val" id="agctv">–</span></div>
+      <div class="row"><label>Khuếch đại tối đa</label><input type="range" id="agcm" min="0" max="100" step="5"><span class="val" id="agcmv">–</span></div>
+      <div class="hint">Tự động tăng âm lượng micro trước khi gửi lên server nhận dạng giọng nói. Hữu ích khi nói từ xa. Mặc định bật, mức đích 0.35, khuếch đại tối đa 30×. Thay đổi có hiệu lực từ lần wake kế tiếp.</div>
+    </div>
+    <div class="card">
+      <div class="ch"><span class="icon-badge ib-mic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="7.5" y="2" width="5" height="9" rx="2.5" fill="currentColor" stroke="none"/><path d="M4.5 9.5a5.5 5.5 0 0011 0"/><line x1="10" y1="15" x2="10" y2="18"/><line x1="7" y1="18" x2="13" y2="18"/></svg></span><h2>Kiểm tra mic</h2></div>
+      <div class="row" style="gap:10px;margin:0">
+        <button class="btn rec" id="recRaw" style="flex:1;width:auto" onclick="toggleRec(false)">● Mic thô</button>
+        <button class="btn rec" id="recAgc" style="flex:1;width:auto" onclick="toggleRec(true)">● Mic + AGC</button>
+      </div>
+      <audio id="recAudio" controls style="width:100%;margin-top:12px;height:36px" hidden></audio>
+      <div class="hint" id="recHint" style="margin-top:8px">Bấm để ghi âm trực tiếp từ loa R1 rồi nghe lại. <b>Mic thô</b> — âm thanh gốc chưa xử lý. <b>Mic + AGC</b> — đã áp dụng khuếch đại theo slider bên trên. Tối đa 30 giây, 16 kHz.</div>
+    </div>
+    <div class="card">
+      <div class="ch"><span class="icon-badge ib-led"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2a5 5 0 00-3 9c.6.5 1 1.2 1 2h4c0-.8.4-1.5 1-2a5 5 0 00-3-9z"/><line x1="8.3" y1="16" x2="11.7" y2="16"/><line x1="8.6" y1="18" x2="11.4" y2="18"/></svg></span><h2>Đèn LED</h2></div>
+      <div class="row"><label class="wide"><span class="icon-mini ib-wake"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="4" cy="16" r="1.3" fill="currentColor" stroke="none"/><path d="M7 13a6 6 0 018 0"/><path d="M9.3 15.3a3 3 0 014 0"/></svg></span>Đang nghe</label><input class="codein" id="ledL" onchange="set('led_listening',this.value)"><button class="tbtn" onclick="testLed('led_listening','ledL','listening')">▶</button></div>
+      <div class="row"><label class="wide"><span class="icon-mini ib-voice"><svg viewBox="0 0 20 20" fill="currentColor"><rect x="2" y="7" width="2.2" height="6" rx="1.1"/><rect x="6.3" y="4" width="2.2" height="12" rx="1.1"/><rect x="10.6" y="1" width="2.2" height="18" rx="1.1"/><rect x="14.9" y="4" width="2.2" height="12" rx="1.1"/></svg></span>Đang trả lời</label><input class="codein" id="ledS" onchange="set('led_speaking',this.value)"><button class="tbtn" onclick="testLed('led_speaking','ledS','speaking')">▶</button></div>
+      <div class="row"><label class="wide"><span class="icon-mini ib-eq"><svg viewBox="0 0 20 20" fill="currentColor"><circle cx="5" cy="15" r="2.2"/><rect x="6.8" y="3" width="1.4" height="12" rx="0.7"/><path d="M8.2 3c2 .2 3.3 1.4 3.3 3.4" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg></span>Phát nhạc</label><input class="codein" id="ledM" onchange="set('led_music',this.value)"><button class="tbtn" onclick="testLed('led_music','ledM','music')">▶</button></div>
+      <div class="row"><label class="wide"><span class="icon-mini ib-sys"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M14 10.5A5.5 5.5 0 018.8 4 6 6 0 1014 10.5z"/></svg></span>Chờ</label><input class="codein" id="ledI" onchange="set('led_idle',this.value)"><button class="tbtn" onclick="testLed('led_idle','ledI','idle')">▶</button></div>
+      <div class="hint">Mã hiệu ứng đèn cho từng trạng thái. Nhiều mã cách nhau bằng dấu phẩy (vd "505,309,503" = nhịp thở). Nhấn <b>▶</b> để xem ngay trên đèn thật.</div>
+    </div>
+    <div class="card">
+      <div class="ch"><span class="icon-badge ib-sys"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="10" cy="10" r="3"/><circle cx="10" cy="10" r="1" fill="currentColor" stroke="none"/><line x1="10" y1="2" x2="10" y2="4.2"/><line x1="10" y1="15.8" x2="10" y2="18"/><line x1="2" y1="10" x2="4.2" y2="10"/><line x1="15.8" y1="10" x2="18" y2="10"/><line x1="4.6" y1="4.6" x2="6.1" y2="6.1"/><line x1="13.9" y1="13.9" x2="15.4" y2="15.4"/><line x1="15.4" y1="4.6" x2="13.9" y2="6.1"/><line x1="6.1" y1="13.9" x2="4.6" y2="15.4"/></svg></span><h2>Hệ thống</h2></div>
+      <div class="row"><label>Sample rate</label>
+        <div class="segsel" style="flex:1"><button id="sr24" onclick="setSr(24000)">24 kHz</button><button id="sr48" onclick="setSr(48000)">48 kHz</button></div></div>
+      <div class="hint" style="margin:-2px 0 12px">Tốc độ lấy mẫu audio phát lại. Dùng 48 kHz (mặc định) — chuyển sang 24 kHz nếu âm thanh bị giật hoặc đơ. Phải khớp với cài đặt server. Đổi cần restart app.</div>
+      <button class="btn warn" onclick="restart()">↻ Restart app</button>
+    </div>
+  </div>
+</div>
+<!-- SETUP -->
+<div id="psetup" class="page">
+  <div class="settings">
+    <div class="card">
+      <div class="ch"><span class="icon-badge ib-ai"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a4 4 0 00-4 4v1a3 3 0 000 6v1a4 4 0 008 0v-1a3 3 0 000-6V6a4 4 0 00-4-4z"/></svg></span><h2>Assistant</h2></div>
+      <div class="row" style="align-items:flex-start"><label style="padding-top:8px">Persona</label>
+        <textarea class="codein-area" id="assistantPrompt" placeholder="Để trống = dùng persona mặc định của server"></textarea></div>
+      <div class="row" style="gap:8px"><button class="btn rec" style="flex:1;width:auto" onclick="saveAssistant()">Save</button><span class="hint" id="assistantStat" style="flex:1"></span></div>
+      <div class="hint">Persona ghi đè server cho phiên này. Áp dụng từ lần wake kế tiếp. Để trống = dùng mặc định server.</div>
+    </div>
+
+    <div class="card">
+      <div class="ch"><span class="icon-badge ib-srv"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="7"/><path d="M3 10h14M10 3c2.5 2 2.5 12 0 14M10 3c-2.5 2-2.5 12 0 14"/></svg></span><h2>Server</h2></div>
+      <div class="row"><label>OTA URL</label><input class="codein" id="ota" placeholder="http://host:8003/xiaozhi/ota/"></div>
+      <div class="row" style="gap:8px"><button class="btn rec" style="flex:1;width:auto" onclick="connectServer()">Connect</button><span class="hint" id="srvStat" style="flex:1"></span></div>
+    </div>
+
+    <div class="card">
+      <div class="ch"><span class="icon-badge ib-ai"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a4 4 0 00-4 4v1a3 3 0 000 6v1a4 4 0 008 0v-1a3 3 0 000-6V6a4 4 0 00-4-4z"/></svg></span><h2>AI Model</h2></div>
+      <div class="row"><label>Provider</label><select id="prov" onchange="onProv()"><option value="custom">Custom</option><option value="openai">OpenAI</option><option value="openrouter">OpenRouter</option><option value="moonshot">Moonshot</option><option value="gemini">Gemini</option><option value="omniroute">OmniRoute</option></select></div>
+      <div class="row"><label>Base URL</label><input class="codein" id="burl" placeholder="https://.../v1"></div>
+      <div class="row"><label>API Key</label><input class="codein" id="akey" type="password" placeholder="sk-…"><button class="tbtn" onclick="togKey()">👁</button></div>
+      <div class="row" id="rowTrans" hidden><label>Transport</label><select id="ltrans"><option>openai</option><option>anthropic</option></select></div>
+      <div class="row"><label>Model</label><button class="tbtn" onclick="fetchModels()">⟳</button><select id="lmodel" style="flex:1"><option value="">(fetch or type)</option></select><button class="tbtn" onclick="togModelInput()">✎</button></div>
+      <input class="codein" id="lmodelText" placeholder="model name" hidden style="margin-top:6px">
+      <div class="row" style="gap:8px;margin-top:4px"><button class="btn rec" style="flex:1;width:auto" onclick="testLlm()">Test</button><button class="btn rec" style="flex:1;width:auto" onclick="saveLlm()">Save</button></div>
+      <div class="hint" id="llmStat">Áp dụng từ lần wake kế tiếp.</div>
+    </div>
+
+    <div class="card">
+      <div class="ch"><span class="icon-badge ib-srv"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 2 2 8v10h6v-6h4v6h6V8z"/></svg></span><h2>Home Assistant</h2></div>
+      <div class="row"><label>HA URL</label><input class="codein" id="haUrl" placeholder="http://homeassistant.local:8123"></div>
+      <div class="row"><label>Token</label><input class="codein" id="haTok" type="password" placeholder="long-lived token"><button class="tbtn" onclick="togHaKey()">👁</button></div>
+      <div class="row" style="gap:8px"><button class="btn rec" style="flex:1;width:auto" onclick="fetchHaDevices()">Fetch devices ⟳</button><button class="btn rec" style="flex:1;width:auto" onclick="testHa()">Test</button></div>
+      <div class="row" style="margin:8px 0 0"><input class="codein" id="haSearch" placeholder="🔍 tên hoặc entity_id" oninput="renderHaPick()"></div>
+      <div class="segsel" id="haDomains" style="flex:1;margin-top:6px;flex-wrap:wrap"></div>
+      <div id="haPick" style="max-height:220px;overflow:auto;margin-top:8px"></div>
+      <div class="row" style="margin-top:6px"><button class="btn rec" style="flex:1;width:auto" onclick="saveHa()">Save</button></div>
+      <div class="hint" id="haStat">Nhập HA URL + token rồi Fetch để chọn thiết bị.</div>
+      <div class="ch" style="margin-top:8px"><h2>Đã lưu</h2></div>
+      <div id="haSaved"></div>
+    </div>
+
+    <div class="card">
+      <div class="ch"><span class="icon-badge ib-wake"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="4" cy="16" r="1.3" fill="currentColor" stroke="none"/><path d="M7 13a6 6 0 018 0"/><path d="M9.3 15.3a3 3 0 014 0"/></svg></span><h2>Wake engine</h2></div>
+      <div class="row"><label>Engine</label><div class="segsel" style="flex:1"><button id="weAlexa" onclick="setWake('alexa')">Alexa</button><button id="weNabu" onclick="setWake('nabu')">OK Nabu</button></div></div>
+      <div class="hint">Đổi engine cần restart app.</div>
+    </div>
+
+    <div class="card">
+      <div class="ch"><span class="icon-badge ib-sys"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h12v9H4z"/><line x1="7" y1="7" x2="13" y2="7"/><line x1="7" y1="10" x2="11" y2="10"/></svg></span><h2>Log</h2></div>
+      <div class="hint" id="setupLog" style="white-space:pre-wrap;max-height:120px;overflow:auto;font-family:ui-monospace,'SF Mono',monospace;font-size:11px"></div>
+    </div>
+  </div>
+</div>
+</div><!--panes-->
+</div><!--app-->
+
+<!-- CHAT: floating button + right-side drawer -->
+<button id="chatFab" onclick="toggleChat()"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M3 5a2 2 0 012-2h10a2 2 0 012 2v6a2 2 0 01-2 2H9l-4 3v-3H5a2 2 0 01-2-2V5z"/></svg>Chat</button>
+<div id="chatBackdrop" onclick="closeChat()"></div>
+<div id="chatDrawer">
+  <div class="chat-head"><div class="logo">🤖</div><h3>Chat với robot</h3><button class="chat-close" onclick="closeChat()">✕</button></div>
+  <div id="chat"><div class="empty">Chưa có tin nhắn.<br>Nhắn cho robot bên dưới 👇</div></div>
+  <div class="inbar">
+    <input id="msg" placeholder="Nhắn cho robot…" onkeydown="if(event.key==='Enter')send()">
+    <button onclick="send()">➤</button>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const set=(k,v)=>fetch(`/api/set?key=${k}&value=${encodeURIComponent(v)}`,{method:'POST'});
+function restart(){if(confirm('Restart app?'))fetch('/api/restart',{method:'POST'});}
+function tab(t){['set','setup'].forEach(x=>{$('p'+x).classList.toggle('on',x===t);$('t'+x).classList.toggle('on',x===t);});}
+function openChat(){$('chatDrawer').classList.add('open');$('chatBackdrop').classList.add('open');document.body.classList.add('chat-open');setTimeout(()=>{const i=$('msg');if(i)i.focus();},60);}
+function closeChat(){$('chatDrawer').classList.remove('open');$('chatBackdrop').classList.remove('open');document.body.classList.remove('chat-open');}
+function toggleChat(){$('chatDrawer').classList.contains('open')?closeChat():openChat();}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeChat();});
+function send(){const t=$('msg').value.trim();if(!t)return;fetch(`/api/say?text=${encodeURIComponent(t)}`,{method:'POST'});$('msg').value='';}
+function setSr(v){$('sr24').classList.toggle('on',v===24000);$('sr48').classList.toggle('on',v===48000);set('playback_sr',v);}
+function testLed(key,id,state){fetch(`/api/set?key=${key}&value=${encodeURIComponent($(id).value)}`,{method:'POST'}).then(()=>fetch('/api/led?state='+state,{method:'POST'}));}
+
+// ── Theme toggle ──────────────────────────────────
+function toggleTheme(){
+  const next=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';
+  document.documentElement.setAttribute('data-theme',next);
+  $('thmBtn').textContent=next==='dark'?'🌙':'☀️';
+  try{localStorage.setItem('r1-theme',next);}catch(e){}
+}
+(function initTheme(){
+  const t=document.documentElement.getAttribute('data-theme')||'dark';
+  $('thmBtn').textContent=t==='dark'?'🌙':'☀️';
+})();
+
+// ── TTS voices ───────────────────────────────────
+let TTS_HOST='';  // de-hardcoded: derived from the configured server host via /api/state.tts_host
+const VOICE_DESC={"Ngọc Linh":"Nữ · tươi sáng","Ngọc Lan":"Nữ · dịu dàng","Mỹ Duyên":"Nữ · mượt mà","Trúc Ly":"Nữ · trẻ trung","Gia Bảo":"Nam · mượt mà","Thái Sơn":"Nam · chắc khỏe","Đức Trí":"Nam · rõ ràng","Xuân Vĩnh":"Nam · vui tươi","Trọng Hữu":"Nam · uyên bác","Bình An":"Nam · điềm đạm"};
+async function loadVoices(){try{const v=await(await fetch(TTS_HOST+'/voice')).json();
+  $('voice').innerHTML=v.voices.map(n=>`<option value="${n}"${n===v.voice?' selected':''}>${n} — ${VOICE_DESC[n]||''}</option>`).join('');
+}catch(e){$('voice').innerHTML='<option>(không nối VieNeu :8002)</option>';}}
+$('voice').onchange=e=>fetch(`${TTS_HOST}/voice?name=${encodeURIComponent(e.target.value)}`,{method:'POST'});
+
+// ── Chat với timestamp (giờ thật lúc tin nhắn xảy ra, do server gửi lên) ──
+let lastSig='';
+function fmtTime(ms){return new Date(ms).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'});}
+function renderChat(msgs){
+  const c=$('chat');
+  const atB=c.scrollHeight-c.scrollTop-c.clientHeight<80;
+  if(!msgs||!msgs.length){c.innerHTML='<div class="empty">Chưa có tin nhắn.<br>Nhắn cho robot bên dưới 👇</div>';return;}
+  c.innerHTML=msgs.map(m=>`
+    <div class="bubble-wrap ${m.sender==='user'?'user':'assistant'}">
+      <div class="b">${m.text.replace(/</g,'&lt;')}</div>
+      <div class="btime">${fmtTime(m.time)}</div>
+    </div>`).join('');
+  if(atB)c.scrollTop=c.scrollHeight;
+}
+
+let eqInit=false;
+function render(s){
+  $('vol').value=s.volume;$('volv').textContent=s.volume+'%';
+  $('ws').value=parseFloat(s.wake_sensitivity);$('wsv').textContent=s.wake_sensitivity;
+  $('wss').value=parseFloat(s.wake_sensitivity_speaking);$('wssv').textContent=s.wake_sensitivity_speaking;
+  if(s.mic_source!=null)$('msrc').value=s.mic_source;
+  $('agc').checked=s.agc_enabled;
+  $('agct').value=s.agc_target;$('agctv').textContent=(+s.agc_target).toFixed(2);
+  $('agcm').value=s.agc_max_gain;$('agcmv').textContent=(+s.agc_max_gain).toFixed(0)+'x';
+  if(document.activeElement!==$('ledL'))$('ledL').value=s.led_listening||'';
+  if(document.activeElement!==$('ledS'))$('ledS').value=s.led_speaking||'';
+  if(document.activeElement!==$('ledM'))$('ledM').value=s.led_music||'';
+  if(document.activeElement!==$('ledI'))$('ledI').value=s.led_idle||'';
+  $('sr24').classList.toggle('on',s.playback_sr==24000);$('sr48').classList.toggle('on',s.playback_sr==48000);
+  $('eqon').checked=s.eq_enabled;
+  if(s.eq&&!eqInit){eqInit=true;window.bands=s.eq.freqs.map((f,i)=>s.eq_bands[i]||0);
+    $('eq').innerHTML=s.eq.freqs.map((f,i)=>{const hz=f>=1000?(f/1000)+'k':f;
+      return `<div class="eqband"><span class="eqg" id="g${i}"></span>
+        <div class="eq-wrap"><input class="vert" type="range" min="${s.eq.min}" max="${s.eq.max}" step="100" value="${bands[i]}" oninput="onEq(${i},this.value)"></div>
+        <div class="eqf">${hz}</div></div>`;}).join('');
+    s.eq.freqs.forEach((f,i)=>$('g'+i).textContent=(bands[i]/100).toFixed(0));}
+  if(s.tts_host&&s.tts_host!==TTS_HOST){TTS_HOST=s.tts_host;loadVoices();}
+  // Populate the Setup inputs ONCE (from saved state); never on later polls, so unsaved edits
+  // (text fields, provider combobox, model) are not clobbered every 1.5s.
+  if(!setupInit){setupInit=true;
+    $('assistantPrompt').value=s.custom_prompt||'';
+    $('ota').value=s.ota_url||'';
+    $('prov').value=s.llm_provider||'custom';onProv();
+    if(s.llm_base_url)$('burl').value=s.llm_base_url;
+    if(s.llm_model)$('lmodel').innerHTML=`<option value="${s.llm_model}">${s.llm_model}</option>`;
+    if(s.llm_api_key_set)$('akey').placeholder='•••• (đã lưu — để trống nếu giữ nguyên)';
+    $('haUrl').value=s.ha_url||'';
+    if(s.ha_token_set)$('haTok').placeholder='•••• (đã lưu)';
+    renderHaSaved(s.ha_devices||'');
+    restoreHaSel(s.ha_devices||'');
+  }
+  // Display-only (reflect saved state; not user-editable inputs) — safe to refresh each poll.
+  $('weAlexa').classList.toggle('on',(s.wake_engine||'alexa')==='alexa');
+  $('weNabu').classList.toggle('on',s.wake_engine==='nabu');
+  const sig=JSON.stringify(s.chat);
+  if(sig!==lastSig){lastSig=sig;renderChat(s.chat);}
+}
+function onEq(i,v){bands[i]=parseInt(v);$('g'+i).textContent=(v/100).toFixed(0);set('eq_bands',bands.join(','));}
+$('vol').oninput=e=>{$('volv').textContent=e.target.value+'%';set('volume',e.target.value);};
+$('ws').oninput=e=>{$('wsv').textContent=(+e.target.value).toFixed(2);set('wake_sensitivity',(+e.target.value).toFixed(2));};
+$('wss').oninput=e=>{$('wssv').textContent=(+e.target.value).toFixed(2);set('wake_sensitivity_speaking',(+e.target.value).toFixed(2));};
+$('msrc').onchange=e=>set('mic_source',e.target.value);
+$('agc').onchange=e=>set('agc_enabled',e.target.checked);
+$('agct').oninput=e=>{$('agctv').textContent=(+e.target.value).toFixed(2);set('agc_target',e.target.value);};
+$('agcm').oninput=e=>{$('agcmv').textContent=(+e.target.value).toFixed(0)+'x';set('agc_max_gain',e.target.value);};
+$('eqon').onchange=e=>set('eq_enabled',e.target.checked);
+
+// ── Test mic A/B ─────────────────────────────────
+let recTimer=null,recSecs=0,recActive=null;
+function recReset(){recActive=null;
+  $('recRaw').textContent='● Thô';$('recAgc').textContent='● + AGC';
+  ['recRaw','recAgc'].forEach(id=>{const b=$(id);b.disabled=false;b.style.cssText='flex:1;width:auto';});
+}
+function toggleRec(agc){
+  if(recActive!==null){stopRec();return;}
+  fetch('/api/mic/start?agc='+(agc?1:0),{method:'POST'}).then(()=>{
+    recActive=agc;recSecs=0;$('recAudio').hidden=true;
+    const on=agc?'recAgc':'recRaw',off=agc?'recRaw':'recAgc';
+    $(off).disabled=true;
+    const b=$(on);
+    b.style.cssText='flex:1;width:auto;background:var(--grad);color:#fff;border-color:transparent;';
+    b.textContent='■ Xong (0s)';
+    recTimer=setInterval(()=>{recSecs++;$(on).textContent='■ Xong ('+recSecs+'s)';if(recSecs>=30)stopRec();},1000);
+  }).catch(()=>{$('recHint').textContent='Không gọi được /api/mic/start (cần bản app mới).';});
+}
+function stopRec(){
+  clearInterval(recTimer);recTimer=null;const wasAgc=recActive;recReset();
+  fetch('/api/mic/stop',{method:'POST'}).then(r=>r.json()).then(j=>{
+    if(j.bytes>0){const a=$('recAudio');a.src='/api/mic/rec.wav?t='+Date.now();a.hidden=false;a.play().catch(()=>{});
+      $('recHint').textContent=(wasAgc?'▶ Bản +AGC':'▶ Bản THÔ')+' — nghe rồi ghi bản kia để so.';}
+    else $('recHint').textContent='Không thu được gì (vừa bấm quá nhanh?). Thử lại.';
+  });
+}
+recReset();
+
+// ── Poll ─────────────────────────────────────────
+async function poll(){
+  try{render(await(await fetch('/api/state')).json());
+    $('st').textContent='online';$('sti').className='status-dot';}
+  catch(e){$('st').textContent='offline';$('sti').className='status-dot off';}
+}
+// ── Setup tab (AI model / server / wake) ─────────────
+const PRESETS={openai:'https://api.openai.com/v1',openrouter:'https://openrouter.ai/api/v1',moonshot:'https://api.moonshot.ai/v1',gemini:'',omniroute:'',custom:''};
+let setupInit=false;
+function onProv(){const p=$('prov').value;$('burl').value=PRESETS[p]||'';
+  $('rowTrans').hidden=(p!=='custom');
+  $('ltrans').value='openai';}  // server only supports openai transport; OmniRoute /api/v1 is OpenAI-compatible
+function togKey(){$('akey').type=$('akey').type==='password'?'text':'password';}
+let modelManual=false;
+function togModelInput(){modelManual=!modelManual;$('lmodel').hidden=modelManual;$('lmodelText').hidden=!modelManual;}
+function curModel(){return modelManual?$('lmodelText').value.trim():$('lmodel').value;}
+function llmParams(){return `base_url=${encodeURIComponent($('burl').value.trim())}&api_key=${encodeURIComponent($('akey').value)}&model=${encodeURIComponent(curModel())}`;}
+function logSetup(m){const el=$('setupLog');if(!el)return;el.textContent=(new Date().toLocaleTimeString('vi-VN')+'  '+m+'\n'+el.textContent).slice(0,2000);}
+async function fetchModels(){$('llmStat').textContent='Đang tải models…';
+  try{const j=await(await fetch('/api/llm/models?'+llmParams())).json();
+    if(!j.ok){$('llmStat').textContent='Models: '+j.error;logSetup('models ✗ '+j.error);return;}
+    $('lmodel').innerHTML=j.models.map(m=>`<option value="${m}">${m}</option>`).join('')||'<option value="">(none)</option>';
+    modelManual=false;$('lmodel').hidden=false;$('lmodelText').hidden=true;
+    $('llmStat').textContent=j.models.length+' models';logSetup('models: '+j.models.length+' loaded');}
+  catch(e){$('llmStat').textContent='Lỗi fetch models';logSetup('models ✗ '+e);}}
+async function testLlm(){
+  if(!curModel()){$('llmStat').textContent='✗ Chọn/nhập model trước (bấm ⟳ hoặc ✎).';return;}
+  $('llmStat').textContent='Testing…';
+  try{const j=await(await fetch('/api/llm/test?'+llmParams(),{method:'POST'})).json();
+    $('llmStat').textContent=j.ok?`✓ ${j.latency_ms}ms · ${j.model}`:`✗ ${j.error}`;
+    logSetup('test '+(j.ok?('✓ '+j.latency_ms+'ms · '+j.model):('✗ '+j.error)));}
+  catch(e){$('llmStat').textContent='✗ '+e;logSetup('test ✗ '+e);}}
+async function saveLlm(){const p=$('prov').value;
+  const kv={llm_provider:p,llm_base_url:$('burl').value.trim(),
+    llm_model:curModel(),llm_transport:$('ltrans').value};
+  if($('akey').value)kv.llm_api_key=$('akey').value;   // don't wipe the saved key when left blank
+  for(const k in kv)await fetch(`/api/set?key=${k}&value=${encodeURIComponent(kv[k])}`,{method:'POST'});
+  $('llmStat').textContent='Đã lưu — áp dụng từ lần wake kế tiếp.';logSetup('saved provider='+p+' model='+curModel());}
+async function connectServer(){$('srvStat').textContent='Connecting…';
+  try{const j=await(await fetch('/api/setup/server?ota='+encodeURIComponent($('ota').value.trim()),{method:'POST'})).json();
+    $('srvStat').textContent=j.ok?('● '+j.ws_url+(j.src==='derived'?' (derived)':'')):('✗ '+j.error);
+    logSetup('connect '+(j.ok?('✓ '+j.ws_url+' ['+j.src+']'):('✗ '+j.error)));}
+  catch(e){$('srvStat').textContent='✗ '+e;logSetup('connect ✗ '+e);}}
+function setWake(e){$('weAlexa').classList.toggle('on',e==='alexa');$('weNabu').classList.toggle('on',e==='nabu');
+  fetch('/api/setup/wake?engine='+e,{method:'POST'});logSetup('wake engine -> '+e);}
+
+// ── Home Assistant device manager ─────────────────
+const HA_DOMAINS=['all','light','switch','fan','media_player','script','climate','cover'];
+const HA_CTRL=['light','switch','fan','media_player','script','climate','cover','input_boolean'];
+let haAll=[];        // fetched [{entity_id,name,domain}]
+let haSel={};        // entity_id -> {location,name}
+let haDomain='all';
+function togHaKey(){$('haTok').type=$('haTok').type==='password'?'text':'password';}
+function haParams(){return `ha_url=${encodeURIComponent($('haUrl').value.trim())}&token=${encodeURIComponent($('haTok').value)}`;}
+async function testHa(){$('haStat').textContent='Testing…';
+  try{const j=await(await fetch('/api/ha/test?'+haParams())).json();
+    $('haStat').textContent=j.ok?'✓ HA reachable':('✗ '+j.error);logSetup('HA test '+(j.ok?'✓':'✗ '+j.error));}
+  catch(e){$('haStat').textContent='✗ '+e;}}
+async function fetchHaDevices(){$('haStat').textContent='Đang tải devices…';
+  try{const j=await(await fetch('/api/ha/devices?'+haParams())).json();
+    if(!j.ok){$('haStat').textContent='✗ '+j.error;logSetup('HA fetch ✗ '+j.error);return;}
+    haAll=j.devices;renderHaDomains();renderHaPick();
+    $('haStat').textContent=haAll.length+' entities';logSetup('HA fetch: '+haAll.length+' entities');}
+  catch(e){$('haStat').textContent='✗ '+e;}}
+function renderHaDomains(){$('haDomains').innerHTML=HA_DOMAINS.map(d=>`<button class="${d===haDomain?'on':''}" onclick="haDomain='${d}';renderHaDomains();renderHaPick()">${d}</button>`).join('');}
+function renderHaPick(){const q=($('haSearch').value||'').toLowerCase();
+  const rows=haAll.filter(d=>(haDomain==='all'?HA_CTRL.includes(d.domain):d.domain===haDomain))
+    .filter(d=>!q||d.entity_id.toLowerCase().includes(q)||(d.name||'').toLowerCase().includes(q));
+  $('haPick').innerHTML=rows.map(d=>{const s=haSel[d.entity_id];const on=!!s;
+    return `<div class="row" style="margin:6px 0;gap:6px;align-items:flex-start">
+      <input type="checkbox" ${on?'checked':''} onchange="toggleHa('${d.entity_id}','${(d.name||'').replace(/'/g,'')}',this.checked)">
+      <div style="flex:1;min-width:0"><div style="font-size:12px;word-break:break-all">${d.entity_id}</div>
+        <div class="hint" style="padding:0">${d.name||''}</div>
+        ${on?`<div style="display:flex;gap:5px;margin-top:3px"><input class="codein" placeholder="location" value="${s.location||''}" oninput="haSel['${d.entity_id}'].location=this.value">
+          <input class="codein" placeholder="name" value="${s.name||''}" oninput="haSel['${d.entity_id}'].name=this.value"></div>`:''}</div></div>`;}).join('')
+    ||'<div class="hint">(không có device khớp)</div>';}
+function toggleHa(id,name,on){if(on)haSel[id]={location:'',name:name};else delete haSel[id];renderHaPick();}
+// Restore the selection from the saved device list so it survives reopen and Save doesn't wipe it.
+function restoreHaSel(devs){haSel={};(devs||'').split('\n').filter(Boolean).forEach(l=>{const p=l.split(',');if(p.length<2)return;const id=p[p.length-1].trim();if(!id)return;haSel[id]={location:p[0].trim(),name:p.slice(1,-1).join(',').trim()};});}
+function haLines(){return Object.entries(haSel).map(([id,s])=>`${(s.location||'').trim()},${(s.name||'').trim()},${id}`).filter(l=>{const p=l.split(',');return p[0]&&p[1];}).join('\n');}
+async function saveAssistant(){const v=$('assistantPrompt').value;
+  // Persona text can run several KB — send it in the POST body, not the query string, which has a
+  // practical length ceiling long free text can silently exceed (truncates instead of erroring).
+  const r=await fetch(`/api/set?key=custom_prompt`,{method:'POST',body:v});
+  const j=await r.json().catch(()=>({ok:false}));
+  $('assistantStat').textContent=j.ok?(v.trim()?'Đã lưu — áp dụng từ lần wake kế tiếp.':'Đã lưu (trống) — dùng mặc định server.'):'✗ Lỗi lưu, thử lại.';
+  logSetup('assistant prompt saved ('+v.length+' ký tự)'+(j.ok?'':' FAILED'));}
+async function saveHa(){const lines=haLines();
+  const kv={ha_url:$('haUrl').value.trim(),ha_devices:lines};
+  if($('haTok').value)kv.ha_token=$('haTok').value;   // don't wipe the saved token when left blank
+  for(const k in kv)await fetch(`/api/set?key=${k}&value=${encodeURIComponent(kv[k])}`,{method:'POST'});
+  $('haStat').textContent='Đã lưu '+lines.split('\n').filter(Boolean).length+' thiết bị.';logSetup('HA saved '+lines.split('\n').filter(Boolean).length+' devices');renderHaSaved(lines);}
+function renderHaSaved(devs){const lines=(devs||'').split('\n').filter(Boolean);
+  $('haSaved').innerHTML=lines.map((l,i)=>`<div class="row" style="margin:5px 0;gap:6px"><input class="codein" value="${l.replace(/"/g,'&quot;')}" onchange="editHaLine(${i},this.value)"><button class="tbtn" onclick="removeHaLine(${i})">✕</button></div>`).join('')||'<div class="hint">(chưa lưu thiết bị nào)</div>';
+  $('haSaved').dataset.lines=JSON.stringify(lines);}
+function _haLines(){return JSON.parse($('haSaved').dataset.lines||'[]');}
+async function _saveHaLines(lines){await fetch(`/api/set?key=ha_devices&value=${encodeURIComponent(lines.join('\n'))}`,{method:'POST'});renderHaSaved(lines.join('\n'));}
+function editHaLine(i,v){const l=_haLines();l[i]=v.trim();_saveHaLines(l);}
+function removeHaLine(i){const l=_haLines();l.splice(i,1);_saveHaLines(l);}
+
+poll();setInterval(poll,1500);
+// loadVoices() now runs from render() once tts_host arrives (de-hardcoded server host).
+</script>
+</body>
+</html>
