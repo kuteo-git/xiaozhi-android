@@ -23,7 +23,15 @@ class MaiOiWakeWordDetector(context: Context) : WakeWordDetector {
     private val interpreter: Interpreter? = runCatching {
         val dir = File(context.filesDir, "mai_oi").apply { mkdirs() }
         val modelFile = copyAsset(context, "mai_oi/mai_oi.tflite", File(dir, "mai_oi.tflite"))
-        Interpreter(File(modelFile)).also {
+        // XNNPACK (TFLite's default CPU delegate) segfaults on first invoke() on this device --
+        // real R1 hardware crash, SIGSEGV fault addr 0x14 inside libtensorflowlite_jni.so, only on
+        // the first inference call (model load/construction succeeds fine). Root cause: this model
+        // has internal streaming state (Stream layers, reset via resetVariableTensors()), and
+        // XNNPACK + stateful/streaming quantized graphs is a known-fragile combination, more so on
+        // 32-bit ARM (this device's ABI). Disabling XNNPACK forces TFLite's default (unaccelerated
+        // but stable) kernels.
+        val options = Interpreter.Options().apply { setUseXNNPACK(false) }
+        Interpreter(File(modelFile), options).also {
             Log.i(TAG, "mai_oi ready (inputs=${it.inputTensorCount}, outputs=${it.outputTensorCount})")
         }
     }.onFailure { Log.e(TAG, "init failed: ${it.message}", it) }.getOrNull()
