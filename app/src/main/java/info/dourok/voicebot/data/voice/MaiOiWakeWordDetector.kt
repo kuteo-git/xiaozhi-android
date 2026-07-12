@@ -17,7 +17,8 @@ import java.nio.ByteOrder
  */
 class MaiOiWakeWordDetector(context: Context) : WakeWordDetector {
 
-    private val features = MicroFeaturesEngine()
+    private val features: MicroFeaturesEngine? = runCatching { MicroFeaturesEngine() }
+        .onFailure { Log.e(TAG, "features init failed: ${it.message}", it) }.getOrNull()
 
     private val interpreter: Interpreter? = runCatching {
         val dir = File(context.filesDir, "mai_oi").apply { mkdirs() }
@@ -27,7 +28,7 @@ class MaiOiWakeWordDetector(context: Context) : WakeWordDetector {
         }
     }.onFailure { Log.e(TAG, "init failed: ${it.message}", it) }.getOrNull()
 
-    override val isReady: Boolean get() = interpreter != null && features.isReady
+    override val isReady: Boolean get() = interpreter != null && features?.isReady == true
 
     // Model input quantization (read directly from the trained model).
     private val inputScale = 0.10196078568696976f
@@ -54,7 +55,7 @@ class MaiOiWakeWordDetector(context: Context) : WakeWordDetector {
         }
 
         var fired = false
-        for (frame in features.processSamples(shorts)) {
+        for (frame in features?.processSamples(shorts) ?: emptyArray()) {
             frameBuffer.add(frame)
             if (frameBuffer.size == 3) {
                 if (runInference(interp, frameBuffer)) fired = true
@@ -82,7 +83,7 @@ class MaiOiWakeWordDetector(context: Context) : WakeWordDetector {
     }
 
     override fun reset() {
-        features.reset()
+        features?.reset()
         frameBuffer.clear()
         interpreter?.resetVariableTensors()
     }
