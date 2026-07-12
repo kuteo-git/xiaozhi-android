@@ -92,6 +92,10 @@ dependencies {
     // Embedded HTTP server for the on-device control panel (EQ / settings / chat).
     implementation("org.nanohttpd:nanohttpd:2.3.1")
 
+    // Standard TFLite runtime for the "Mai ơi" wake engine's classifier (no TFLite Micro needed —
+    // the trained model runs fine as a standard streaming/stateful TFLite graph).
+    implementation("org.tensorflow:tensorflow-lite:2.16.1")
+
     testImplementation(kotlin("test"))
     testImplementation(libs.json)
 }
