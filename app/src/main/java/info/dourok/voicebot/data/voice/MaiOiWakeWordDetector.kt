@@ -35,8 +35,13 @@ class MaiOiWakeWordDetector(context: Context) : WakeWordDetector {
     private val outputScale = 0.00390625f
     private val outputZeroPoint = 0
 
-    // Buffers 3 incoming 40-dim feature frames to match the model's [1, 3, 40] input.
-    private val frameBuffer = ArrayDeque<FloatArray>()
+    // Accumulates 3 incoming 40-dim feature frames to match the model's [1, 3, 40] streaming
+    // input. Matches vendor/microWakeWord/microwakeword/inference.py's predict_spectrogram,
+    // which (with input_feature_slices=3, stride=3) feeds NON-overlapping chunks: frames[0:3],
+    // then frames[3:6], etc. -- inference runs once every 3 NEW frames, never on a sliding
+    // window, because the model has internal streaming state (Stream layers) that persists
+    // across interpreter.run() calls and expects each frame exactly once, in order.
+    private val frameBuffer = mutableListOf<FloatArray>()
 
     override fun process(pcm: ByteArray): Boolean {
         val interp = interpreter ?: return false
@@ -50,14 +55,16 @@ class MaiOiWakeWordDetector(context: Context) : WakeWordDetector {
 
         var fired = false
         for (frame in features.processSamples(shorts)) {
-            frameBuffer.addLast(frame)
-            if (frameBuffer.size > 3) frameBuffer.removeFirst()
-            if (frameBuffer.size == 3 && runInference(interp, frameBuffer)) fired = true
+            frameBuffer.add(frame)
+            if (frameBuffer.size == 3) {
+                if (runInference(interp, frameBuffer)) fired = true
+                frameBuffer.clear()
+            }
         }
         return fired
     }
 
-    private fun runInference(interp: Interpreter, frames: ArrayDeque<FloatArray>): Boolean {
+    private fun runInference(interp: Interpreter, frames: List<FloatArray>): Boolean {
         val input = ByteBuffer.allocateDirect(1 * 3 * 40).order(ByteOrder.nativeOrder())
         for (frame in frames) {
             for (v in frame) {
