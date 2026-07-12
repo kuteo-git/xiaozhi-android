@@ -26,6 +26,15 @@ object AppConfig {
     const val WAKE_SENSITIVITY = "0.5"
 
     /**
+     * "Mai ơi" detection threshold, 0..1. Real-hardware evaluation showed a wide, clean
+     * separation — positives scored ~0.95-1.0, hard negatives ~0.00-0.02 — so 0.5 is a safe,
+     * well-centered default with substantial margin on both sides; no need for asymmetric
+     * normal/speaking defaults the way Snowboy's 0.5/0.4 split needed tuning.
+     */
+    const val MAI_OI_THRESHOLD = "0.5"
+    const val MAI_OI_THRESHOLD_SPEAKING = "0.5"
+
+    /**
      * Software mic gain applied to captured PCM. 2026-06-28: 3.0 -> 1.0 (TẮT) — 3.0 + tanh làm
      * MÉO sóng (clip/nén) khiến PhoWhisper đọc sai, và khuếch đại ồn gây false-wake. Để AGC (HAL +
      * AutomaticGainControl) lo far-field thay vì boost cứng. 1.0 = transparent (applyGain bỏ qua).
