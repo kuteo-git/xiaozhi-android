@@ -120,6 +120,8 @@ class ControlServer @Inject constructor(
         when (key) {
             "wake_sensitivity" -> Settings.wakeSensitivity = v
             "wake_sensitivity_speaking" -> Settings.wakeSensitivitySpeaking = v
+            "mai_oi_threshold" -> Settings.maiOiThreshold = v
+            "mai_oi_threshold_speaking" -> Settings.maiOiThresholdSpeaking = v
             "mic_gain" -> v.toFloatOrNull()?.let { Settings.micGain = it }
             "mic_source" -> v.toIntOrNull()?.let { Settings.micSource = it }
             "agc_enabled" -> Settings.agcEnabled = v == "true"
@@ -171,6 +173,8 @@ class ControlServer @Inject constructor(
         val o = JSONObject()
         o.put("wake_sensitivity", Settings.wakeSensitivity)
         o.put("wake_sensitivity_speaking", Settings.wakeSensitivitySpeaking)
+        o.put("mai_oi_threshold", Settings.maiOiThreshold)
+        o.put("mai_oi_threshold_speaking", Settings.maiOiThresholdSpeaking)
         o.put("mic_gain", Settings.micGain.toDouble())
         o.put("mic_source", Settings.micSource)
         o.put("agc_enabled", Settings.agcEnabled)

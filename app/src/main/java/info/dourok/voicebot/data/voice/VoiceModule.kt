@@ -22,8 +22,11 @@ object VoiceModule {
     @Provides
     @Singleton
     fun provideWakeWordDetector(@ApplicationContext context: Context): WakeWordDetector =
-        if (Settings.wakeEngine == "nabu") MicroWakeWordDetector(context)
-        else SnowboyWakeWordDetector(context)
+        when (Settings.wakeEngine) {
+            "nabu" -> MicroWakeWordDetector(context)
+            "mai_oi" -> MaiOiWakeWordDetector(context)
+            else -> SnowboyWakeWordDetector(context)
+        }
 
     @Provides
     @Singleton
