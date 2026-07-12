@@ -24,6 +24,16 @@ object Settings {
         get() = prefs.getString("wake_sensitivity_speaking", AppConfig.WAKE_SENSITIVITY_SPEAKING)!!
         set(v) = prefs.edit().putString("wake_sensitivity_speaking", v).apply()
 
+    /** "Mai ơi" detection threshold, 0..1. Wider real-world margin than Snowboy's sensitivity. */
+    var maiOiThreshold: String
+        get() = prefs.getString("mai_oi_threshold", AppConfig.MAI_OI_THRESHOLD)!!
+        set(v) = prefs.edit().putString("mai_oi_threshold", v).apply()
+
+    /** "Mai ơi" threshold khi đang nói/nghe nhạc (stricter, tương tự wakeSensitivitySpeaking). */
+    var maiOiThresholdSpeaking: String
+        get() = prefs.getString("mai_oi_threshold_speaking", AppConfig.MAI_OI_THRESHOLD_SPEAKING)!!
+        set(v) = prefs.edit().putString("mai_oi_threshold_speaking", v).apply()
+
     var micGain: Float
         get() = prefs.getFloat("mic_gain", AppConfig.MIC_GAIN)
         set(v) = prefs.edit().putFloat("mic_gain", v).apply()
@@ -106,7 +116,7 @@ object Settings {
         get() = prefs.getString("ws_token", "")!!
         set(v) = prefs.edit().putString("ws_token", v).apply()
 
-    /** Wake engine: "alexa" (snowboy) or "nabu" (microWakeWord). Changing needs an app restart. */
+    /** Wake engine: "alexa" (snowboy), "nabu" (microWakeWord), or "mai_oi". Changing needs an app restart. */
     var wakeEngine: String
         get() = prefs.getString("wake_engine", "alexa")!!
         set(v) = prefs.edit().putString("wake_engine", v).apply()
