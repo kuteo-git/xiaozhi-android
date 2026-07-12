@@ -16,16 +16,16 @@ target_link_libraries(app log)
 # wake-word model was trained on. See micro_features/VENDOR_INFO.txt for
 # full provenance, what was intentionally left out (pymicro-features'
 # CPython binding layer, which does not build for Android), and the exact
-# FrontendConfig values Task 3's JNI glue must replicate.
+# FrontendConfig values the JNI glue below replicates.
 #
-# Task 3 adds the JNI glue (e.g. micro_features_jni.cpp) that calls into
-# this vendored code; append its filename to MICRO_FEATURES_SOURCES below
-# rather than creating a second add_library() for it.
+# micro_features_jni.cpp (in MICRO_FEATURES_SOURCES below) is the JNI glue that calls into
+# this vendored code from info.dourok.voicebot.data.voice.MicroFeaturesEngine.
 set(MICRO_FEATURES_DIR ${CMAKE_CURRENT_SOURCE_DIR}/micro_features)
 set(MICRO_FEATURES_TF_DIR ${MICRO_FEATURES_DIR}/tensorflow/lite/experimental/microfrontend/lib)
 set(MICRO_FEATURES_KISSFFT_DIR ${MICRO_FEATURES_DIR}/kissfft)
 
 set(MICRO_FEATURES_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/micro_features_jni.cpp
     ${MICRO_FEATURES_TF_DIR}/fft.cc
     ${MICRO_FEATURES_TF_DIR}/fft_util.cc
     ${MICRO_FEATURES_TF_DIR}/filterbank.cc
