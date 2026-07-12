@@ -365,8 +365,16 @@ select:focus{border-color:rgba(232,69,60,.45);}
 
     <div class="card">
       <div class="ch"><span class="icon-badge ib-wake"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="4" cy="16" r="1.3" fill="currentColor" stroke="none"/><path d="M7 13a6 6 0 018 0"/><path d="M9.3 15.3a3 3 0 014 0"/></svg></span><h2>Wake engine</h2></div>
-      <div class="row"><label>Engine</label><div class="segsel" style="flex:1"><button id="weAlexa" onclick="setWake('alexa')">Alexa</button><button id="weNabu" onclick="setWake('nabu')">OK Nabu</button></div></div>
+      <div class="row"><label>Engine</label><div class="segsel" style="flex:1"><button id="weAlexa" onclick="setWake('alexa')">Alexa</button><button id="weNabu" onclick="setWake('nabu')">OK Nabu</button><button id="weMaiOi" onclick="setWake('mai_oi')">Mai ơi</button></div></div>
       <div class="hint">Đổi engine cần restart app.</div>
+    </div>
+
+    <div class="card">
+      <div class="ch"><span class="icon-badge ib-wake"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="4" cy="16" r="1.3" fill="currentColor" stroke="none"/><path d="M7 13a6 6 0 018 0"/><path d="M9.3 15.3a3 3 0 014 0"/></svg></span><h2>Mai ơi threshold</h2></div>
+      <div class="row"><label>Độ nhạy</label><input type="range" id="moT" min="0" max="1" step="0.05"><span class="val" id="moTv">–</span></div>
+      <div class="hint">Mức 0.5 là cân bằng, có biên độ rộng (thật đo được: dương ~0.95-1.0, âm khó ~0.00-0.02).</div>
+      <div class="row"><label>Khi phát âm</label><input type="range" id="moTs" min="0" max="1" step="0.05"><span class="val" id="moTsv">–</span></div>
+      <div class="hint">Ngưỡng riêng khi robot đang nói hoặc phát nhạc.</div>
     </div>
 
     <div class="card">
@@ -477,6 +485,9 @@ function render(s){
   // Display-only (reflect saved state; not user-editable inputs) — safe to refresh each poll.
   $('weAlexa').classList.toggle('on',(s.wake_engine||'alexa')==='alexa');
   $('weNabu').classList.toggle('on',s.wake_engine==='nabu');
+  $('weMaiOi').classList.toggle('on',s.wake_engine==='mai_oi');
+  $('moT').value=parseFloat(s.mai_oi_threshold||'0.5');$('moTv').textContent=s.mai_oi_threshold||'0.5';
+  $('moTs').value=parseFloat(s.mai_oi_threshold_speaking||'0.5');$('moTsv').textContent=s.mai_oi_threshold_speaking||'0.5';
   const sig=JSON.stringify(s.chat);
   if(sig!==lastSig){lastSig=sig;renderChat(s.chat);}
 }
@@ -484,6 +495,8 @@ function onEq(i,v){bands[i]=parseInt(v);$('g'+i).textContent=(v/100).toFixed(0);
 $('vol').oninput=e=>{$('volv').textContent=e.target.value+'%';set('volume',e.target.value);};
 $('ws').oninput=e=>{$('wsv').textContent=(+e.target.value).toFixed(2);set('wake_sensitivity',(+e.target.value).toFixed(2));};
 $('wss').oninput=e=>{$('wssv').textContent=(+e.target.value).toFixed(2);set('wake_sensitivity_speaking',(+e.target.value).toFixed(2));};
+$('moT').oninput=e=>{$('moTv').textContent=(+e.target.value).toFixed(2);set('mai_oi_threshold',(+e.target.value).toFixed(2));};
+$('moTs').oninput=e=>{$('moTsv').textContent=(+e.target.value).toFixed(2);set('mai_oi_threshold_speaking',(+e.target.value).toFixed(2));};
 $('msrc').onchange=e=>set('mic_source',e.target.value);
 $('agc').onchange=e=>set('agc_enabled',e.target.checked);
 $('agct').oninput=e=>{$('agctv').textContent=(+e.target.value).toFixed(2);set('agc_target',e.target.value);};
@@ -561,7 +574,7 @@ async function connectServer(){$('srvStat').textContent='Connecting…';
     $('srvStat').textContent=j.ok?('● '+j.ws_url+(j.src==='derived'?' (derived)':'')):('✗ '+j.error);
     logSetup('connect '+(j.ok?('✓ '+j.ws_url+' ['+j.src+']'):('✗ '+j.error)));}
   catch(e){$('srvStat').textContent='✗ '+e;logSetup('connect ✗ '+e);}}
-function setWake(e){$('weAlexa').classList.toggle('on',e==='alexa');$('weNabu').classList.toggle('on',e==='nabu');
+function setWake(e){$('weAlexa').classList.toggle('on',e==='alexa');$('weNabu').classList.toggle('on',e==='nabu');$('weMaiOi').classList.toggle('on',e==='mai_oi');
   fetch('/api/setup/wake?engine='+e,{method:'POST'});logSetup('wake engine -> '+e);}
 
 // ── Home Assistant device manager ─────────────────
