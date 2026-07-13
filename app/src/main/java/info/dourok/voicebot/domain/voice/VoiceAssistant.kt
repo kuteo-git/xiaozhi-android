@@ -205,6 +205,11 @@ class VoiceAssistant @Inject constructor(
                     isMusic = false
                     protocol.closeAudioChannel()
                     state.value = VoiceState.IDLE
+                    // Matches backToWake()'s reset -- without it, a wake detector with real
+                    // cross-call state (e.g. MaiOiWakeWordDetector's frame accumulator + native
+                    // frontend buffers) can carry stale partial state into the next listening
+                    // session and misfire immediately on resume.
+                    wakeWord.reset()
                 }
             }
         }

@@ -87,11 +87,22 @@ class MaiOiWakeWordDetector(context: Context) : WakeWordDetector {
         output.rewind()
         val rawOutput = output.get().toInt() and 0xFF
         val score = (rawOutput - outputZeroPoint) * outputScale
-        return score >= threshold
+        val fire = score >= threshold
+        if (fire) Log.i(TAG, "fire: score=$score threshold=$threshold strict=$strict")
+        return fire
     }
 
     override fun reset() {
-        features?.reset()
+        // Deliberately does NOT call features?.reset(): real on-device testing (2026-07-13) showed
+        // resetting the native frontend's noise-floor/gain estimate produces an elevated-baseline
+        // "cold start" transient for the first 1-2 inferences afterward, which the model reads as a
+        // spurious high-confidence "Mai ơi" -- causing a self-sustaining loop (fire -> reset ->
+        // cold-start transient -> fire again). The frontend's noise/gain adaptation should run
+        // continuously across the whole session, like a real AGC; only the model's own streaming
+        // state (which genuinely needs to not carry stale context between utterances) and our frame
+        // accumulator need to reset here. Verified: with this change, the false-wake loop that
+        // previously fired repeatedly (e.g. after a manual stop, or right after TTS playback) no
+        // longer reproduces across 1700+ consecutive real inferences.
         frameBuffer.clear()
         interpreter?.resetVariableTensors()
     }

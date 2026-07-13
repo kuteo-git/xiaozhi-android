@@ -26,13 +26,20 @@ object AppConfig {
     const val WAKE_SENSITIVITY = "0.5"
 
     /**
-     * "Mai ơi" detection threshold, 0..1. Real-hardware evaluation showed a wide, clean
-     * separation — positives scored ~0.95-1.0, hard negatives ~0.00-0.02 — so 0.5 is a safe,
-     * well-centered default with substantial margin on both sides; no need for asymmetric
-     * normal/speaking defaults the way Snowboy's 0.5/0.4 split needed tuning.
+     * "Mai ơi" detection threshold, 0..1 (score >= threshold triggers wake — LOWER threshold
+     * means MORE sensitive, opposite of Snowboy's SetSensitivity direction). 2026-07-13: the
+     * original 0.5/0.5 pair (equal normal/speaking values) was wrong — it was based on
+     * real-hardware eval against isolated clips (real "Mai ơi" ~0.95-1.0, hard negatives
+     * ~0.00-0.02), which never tested the actual self-hearing scenario: this device has no
+     * AEC (confirmed in logcat), so during TTS playback the mic genuinely picks up the
+     * speaker's own output, and an equal "strict" threshold gave that zero extra protection
+     * -> self-triggered wake right after the assistant finished speaking. 0.8 while speaking
+     * (vs 0.5 normally) gives real strictness margin, mirroring why Snowboy's own 0.5/0.4
+     * split exists at all — same purpose, opposite direction because the underlying value is
+     * a threshold, not a sensitivity.
      */
     const val MAI_OI_THRESHOLD = "0.5"
-    const val MAI_OI_THRESHOLD_SPEAKING = "0.5"
+    const val MAI_OI_THRESHOLD_SPEAKING = "0.8"
 
     /**
      * Software mic gain applied to captured PCM. 2026-06-28: 3.0 -> 1.0 (TẮT) — 3.0 + tanh làm
