@@ -46,6 +46,15 @@ class VoiceAssistant @Inject constructor(
     // state back to SPEAKING (which would stop streaming the mic and lose the user's question).
     @Volatile private var suppressSpeakingUntil = 0L
 
+    // While one of our own chimes (wake/stop) is physically still playing out the speaker, don't run
+    // wake-word detection at all -- this device has no AEC, so the mic hears its own chime (the stop
+    // chime is 2.3s, boosted 25% gain) and the model can score that as a real wake, firing playWake()
+    // on top of the still-playing chime. Window = chime's real duration + echo-tail margin.
+    @Volatile private var suppressWakeUntil = 0L
+    private fun chimeGuard(durationMs: Long) {
+        suppressWakeUntil = System.currentTimeMillis() + durationMs + 400
+    }
+
     private lateinit var protocol: Protocol
     private lateinit var scope: CoroutineScope
 
@@ -100,7 +109,7 @@ class VoiceAssistant @Inject constructor(
                 if (isAwake && state.value == VoiceState.LISTENING) {
                     if (Settings.agcEnabled) agc.process(pcm, pcm.size)  // kéo giọng xa lên TRƯỚC opus
                     encoder?.encode(pcm)?.let { protocol.sendAudio(it) }
-                } else if (wakeWord.isReady) {
+                } else if (wakeWord.isReady && System.currentTimeMillis() >= suppressWakeUntil) {
                     // Wait-for-wake (idle) OR interrupt-while-speaking. Use a stricter threshold
                     // while speaking so the speaker output doesn't false-trigger; AEC keeps a real
                     // "Alexa" audible.
@@ -115,7 +124,7 @@ class VoiceAssistant @Inject constructor(
 
     private suspend fun onWake() {
         Log.i(TAG, ">>> wake word detected")
-        sounds.playWake()
+        chimeGuard(sounds.playWake())
         if (isAwake) {
             // Speaking / music -> interrupt: flush buffered audio + suppress the SPEAKING override so
             // the mic keeps streaming and the user's next command is actually captured.
@@ -149,7 +158,7 @@ class VoiceAssistant @Inject constructor(
         Log.i(TAG, "channel closed -> waiting for wake")
         isAwake = false
         isMusic = false
-        sounds.playStop()   // chuông kết thúc phiên (timeout / tạm biệt) — server không gọi AI chào nữa
+        chimeGuard(sounds.playStop())   // chuông kết thúc phiên (timeout / tạm biệt) — server không gọi AI chào nữa
         state.value = VoiceState.IDLE
         wakeWord.reset()
     }
@@ -185,7 +194,7 @@ class VoiceAssistant @Inject constructor(
         scope.launch {
             when {
                 !isAwake -> {
-                    sounds.playWake()
+                    chimeGuard(sounds.playWake())
                     if (!protocol.isAudioChannelOpened()) protocol.openAudioChannel()
                     protocol.sendStartListening(ListeningMode.AUTO_STOP)
                     isAwake = true
@@ -194,13 +203,13 @@ class VoiceAssistant @Inject constructor(
                 }
                 state.value == VoiceState.SPEAKING -> {
                     interruptPlayback()
-                    sounds.playWake()
+                    chimeGuard(sounds.playWake())
                     protocol.sendStartListening(ListeningMode.AUTO_STOP)
                     startAgc()
                     state.value = VoiceState.LISTENING
                 }
                 else -> {
-                    sounds.playStop()
+                    chimeGuard(sounds.playStop())
                     isAwake = false
                     isMusic = false
                     protocol.closeAudioChannel()

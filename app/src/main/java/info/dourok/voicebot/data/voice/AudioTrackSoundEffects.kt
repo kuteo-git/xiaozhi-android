@@ -19,8 +19,8 @@ class AudioTrackSoundEffects(context: Context) : SoundEffects {
     private val startPcm: Pcm? = loadWav(context, R.raw.start_of_request)
     private val endPcm: Pcm? = loadWav(context, R.raw.end_of_request)
 
-    override fun playWake() = play(startPcm)
-    override fun playStop() = play(endPcm)
+    override fun playWake(): Long = play(startPcm)
+    override fun playStop(): Long = play(endPcm)
 
     private class Pcm(val data: ShortArray, val sr: Int)
 
@@ -56,8 +56,9 @@ class AudioTrackSoundEffects(context: Context) : SoundEffects {
     }.onFailure { Log.e(TAG, "wav load failed: ${it.message}") }.getOrNull()
 
     @Suppress("DEPRECATION")
-    private fun play(pcm: Pcm?) {
-        val p = pcm ?: return
+    private fun play(pcm: Pcm?): Long {
+        val p = pcm ?: return 0L
+        val durationMs = p.data.size * 1000L / p.sr
         try {
             val minBuf = AudioTrack.getMinBufferSize(p.sr, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
             val track = AudioTrack(
@@ -69,7 +70,7 @@ class AudioTrackSoundEffects(context: Context) : SoundEffects {
             track.write(p.data, 0, p.data.size)
             Thread {
                 try {
-                    Thread.sleep(p.data.size * 1000L / p.sr + 250)
+                    Thread.sleep(durationMs + 250)
                     track.stop(); track.release()
                 } catch (_: Exception) {
                 }
@@ -77,6 +78,7 @@ class AudioTrackSoundEffects(context: Context) : SoundEffects {
         } catch (e: Exception) {
             Log.e(TAG, "play failed: ${e.message}")
         }
+        return durationMs
     }
 
     companion object {
