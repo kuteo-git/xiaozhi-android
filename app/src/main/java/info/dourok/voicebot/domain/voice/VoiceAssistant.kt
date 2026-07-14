@@ -61,6 +61,14 @@ class VoiceAssistant @Inject constructor(
     @Volatile private var suppressWakeUntil = 0L
     private val WAKE_CHIME_MARGIN_MS = 1200L
     private val STOP_CHIME_MARGIN_MS = 3500L
+
+    // Blast-radius cap for false wakes. A stray wake (e.g. on TV) otherwise becomes an endless
+    // listen<->reply loop: the server keeps auto-reopening the mic and ambient TV speech never lets
+    // the session idle out, so the robot ends up "chatting with the TV". Bound how many back-to-back
+    // auto-listen turns a single wake can spawn; after the cap it sleeps and waits for a fresh wake.
+    // A real hands-free conversation just re-says "Mai ơi" to keep going.
+    @Volatile private var autoTurns = 0
+    private val MAX_AUTO_TURNS = 4
     private fun chimeGuard(durationMs: Long, marginMs: Long = WAKE_CHIME_MARGIN_MS) {
         val until = System.currentTimeMillis() + durationMs + marginMs
         suppressWakeUntil = until
@@ -109,6 +117,7 @@ class VoiceAssistant @Inject constructor(
         ConversationLog.add("user", text)
         if (!protocol.isAudioChannelOpened()) protocol.openAudioChannel()
         isAwake = true
+        autoTurns = 0
         protocol.sendTextQuery(text)
         state.value = VoiceState.SPEAKING
     }
@@ -141,6 +150,7 @@ class VoiceAssistant @Inject constructor(
 
     private suspend fun onWake() {
         Log.i(TAG, ">>> wake word detected: isAwake=$isAwake state=${state.value} t=${System.currentTimeMillis()}")
+        autoTurns = 0
         chimeGuard(sounds.playWake())
         if (isAwake) {
             // Speaking / music -> interrupt: flush buffered audio + suppress the SPEAKING override so
@@ -195,10 +205,18 @@ class VoiceAssistant @Inject constructor(
                     Log.i(TAG, "tts stop: state=${state.value} t=${System.currentTimeMillis()}")
                     if (state.value == VoiceState.SPEAKING) {
                         playback.awaitCompletion()
-                        // Mở nghe lại (hội thoại liên tục). KHÔNG phát âm ở đây — tts-stop xảy ra cả sau
-                        // thinking-filler nên sẽ chồng với audio câu trả lời thật. Start-sound chỉ ở wake.
-                        protocol.sendStartListening(ListeningMode.AUTO_STOP)
-                        state.value = VoiceState.LISTENING
+                        if (++autoTurns > MAX_AUTO_TURNS) {
+                            // Too many back-to-back auto turns from one wake -> almost certainly a
+                            // false wake feeding on ambient (TV) speech. Sleep instead of re-listening.
+                            Log.i(TAG, "auto-listen turn cap ($MAX_AUTO_TURNS) reached -> sleep")
+                            backToWake()               // isAwake=false first, so the audio loop won't double-fire
+                            protocol.closeAudioChannel()
+                        } else {
+                            // Mở nghe lại (hội thoại liên tục). KHÔNG phát âm ở đây — tts-stop xảy ra cả sau
+                            // thinking-filler nên sẽ chồng với audio câu trả lời thật. Start-sound chỉ ở wake.
+                            protocol.sendStartListening(ListeningMode.AUTO_STOP)
+                            state.value = VoiceState.LISTENING
+                        }
                     }
                 }
                 "sentence_start" -> json.optString("text").takeIf { it.isNotEmpty() }?.let { addMessage("assistant", it) }
@@ -216,6 +234,7 @@ class VoiceAssistant @Inject constructor(
     fun onButtonPress() {
         Log.i(TAG, "onButtonPress: isAwake=$isAwake state=${state.value} t=${System.currentTimeMillis()}")
         scope.launch {
+            autoTurns = 0  // explicit user intent -> reset the false-wake blast-radius cap
             when {
                 !isAwake -> {
                     chimeGuard(sounds.playWake())
