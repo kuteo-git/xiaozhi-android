@@ -124,9 +124,11 @@ class MaiOiWakeWordDetector(context: Context) : WakeWordDetector {
     override fun setStrict(strict: Boolean) { this.strict = strict }
 
     private fun copyAsset(context: Context, assetPath: String, dest: File): String {
-        if (!dest.exists() || dest.length() == 0L) {
-            context.assets.open(assetPath).use { input -> dest.outputStream().use { input.copyTo(it) } }
-        }
+        // ALWAYS overwrite. The bundled mai_oi.tflite changes across app updates, but
+        // `pm install -r` preserves filesDir -- so the old "copy only if missing" guard meant
+        // the very first model copied stuck forever and every later model update silently never
+        // took effect on-device. The model is tiny (~62KB); re-copying on each start is free.
+        context.assets.open(assetPath).use { input -> dest.outputStream().use { input.copyTo(it) } }
         return dest.absolutePath
     }
 
