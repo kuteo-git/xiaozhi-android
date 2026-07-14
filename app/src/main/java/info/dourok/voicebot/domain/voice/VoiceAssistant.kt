@@ -230,39 +230,34 @@ class VoiceAssistant @Inject constructor(
         }
     }
 
-    /** Hardware button: idle -> wake; speaking -> interrupt + listen; listening -> stop. */
+    /** Hardware button: idle -> wake; awake (listening OR speaking) -> sleep. */
     fun onButtonPress() {
         Log.i(TAG, "onButtonPress: isAwake=$isAwake state=${state.value} t=${System.currentTimeMillis()}")
         scope.launch {
             autoTurns = 0  // explicit user intent -> reset the false-wake blast-radius cap
-            when {
-                !isAwake -> {
-                    chimeGuard(sounds.playWake())
-                    if (!protocol.isAudioChannelOpened()) protocol.openAudioChannel()
-                    protocol.sendStartListening(ListeningMode.AUTO_STOP)
-                    isAwake = true
-                    startAgc()
-                    state.value = VoiceState.LISTENING
-                }
-                state.value == VoiceState.SPEAKING -> {
-                    interruptPlayback()
-                    chimeGuard(sounds.playWake())
-                    protocol.sendStartListening(ListeningMode.AUTO_STOP)
-                    startAgc()
-                    state.value = VoiceState.LISTENING
-                }
-                else -> {
-                    chimeGuard(sounds.playStop(), STOP_CHIME_MARGIN_MS)
-                    isAwake = false
-                    isMusic = false
-                    protocol.closeAudioChannel()
-                    state.value = VoiceState.IDLE
-                    // Matches backToWake()'s reset -- without it, a wake detector with real
-                    // cross-call state (e.g. MaiOiWakeWordDetector's frame accumulator + native
-                    // frontend buffers) can carry stale partial state into the next listening
-                    // session and misfire immediately on resume.
-                    wakeWord.reset()
-                }
+            if (!isAwake) {
+                chimeGuard(sounds.playWake())
+                if (!protocol.isAudioChannelOpened()) protocol.openAudioChannel()
+                protocol.sendStartListening(ListeningMode.AUTO_STOP)
+                isAwake = true
+                startAgc()
+                state.value = VoiceState.LISTENING
+            } else {
+                // Awake (LISTENING or SPEAKING) -> always SLEEP. The button is a reliable "turn off".
+                // Previously a press while SPEAKING interrupted-and-kept-listening (barge-in), so
+                // during a conversation loop (e.g. with the TV) the press rarely landed on LISTENING
+                // and couldn't put it to sleep. Stop playback, close the channel, go idle.
+                playback.flush()
+                chimeGuard(sounds.playStop(), STOP_CHIME_MARGIN_MS)
+                isAwake = false
+                isMusic = false
+                protocol.closeAudioChannel()
+                state.value = VoiceState.IDLE
+                // Matches backToWake()'s reset -- without it, a wake detector with real
+                // cross-call state (e.g. MaiOiWakeWordDetector's frame accumulator + native
+                // frontend buffers) can carry stale partial state into the next listening
+                // session and misfire immediately on resume.
+                wakeWord.reset()
             }
         }
     }
