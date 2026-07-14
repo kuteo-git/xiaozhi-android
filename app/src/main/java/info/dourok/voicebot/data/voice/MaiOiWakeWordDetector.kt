@@ -87,8 +87,15 @@ class MaiOiWakeWordDetector(context: Context) : WakeWordDetector {
         output.rewind()
         val rawOutput = output.get().toInt() and 0xFF
         val score = (rawOutput - outputZeroPoint) * outputScale
-        val fire = score >= threshold
-        if (fire) Log.i(TAG, "fire: score=$score threshold=$threshold strict=$strict")
+        // strict (SPEAKING) never fires: real on-device evidence (2026-07-13) showed the model
+        // scoring its OWN real TTS speech (not just chimes) at 0.97-0.99 confidence -- this device
+        // has no AEC, and this model (trained on synthetic data + a limited hard-negative set) isn't
+        // discriminative enough to reject real spoken Vietnamese content the way Alexa/OK Nabu's
+        // model is. No threshold below ~1.0 filters that, so barge-in isn't viable for this engine;
+        // disabling it here (rather than raising the threshold further) is what actually stops the
+        // self-interrupt loop. Mai oi can still WAKE from idle (strict=false) normally.
+        val fire = !strict && score >= threshold
+        Log.i(TAG, "score=$score threshold=$threshold strict=$strict fire=$fire t=${System.currentTimeMillis()}")
         return fire
     }
 

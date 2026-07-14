@@ -48,11 +48,23 @@ class VoiceAssistant @Inject constructor(
 
     // While one of our own chimes (wake/stop) is physically still playing out the speaker, don't run
     // wake-word detection at all -- this device has no AEC, so the mic hears its own chime (the stop
-    // chime is 2.3s, boosted 25% gain) and the model can score that as a real wake, firing playWake()
-    // on top of the still-playing chime. Window = chime's real duration + echo-tail margin.
+    // chime is 2.3s, boosted 25% gain) and the model can score that as a real wake. The "Mai ơi"
+    // model is small and can't reliably reject the stop chime acoustically (it scores ~0.98 even
+    // after retraining against it -- see robot-esp32 wakeword_training), so gating it out is the
+    // deterministic fix, not the model. Window = chime's real duration + echo-tail margin.
+    //
+    // The margin differs by chime. The WAKE chime is followed immediately by LISTENING (wake
+    // detection is off while listening), so it only needs a short margin. The STOP chime returns us
+    // to IDLE with wake detection back ON, so its reverb/decay tail can self-trigger the session-end
+    // re-wake loop the user hit -- and being deaf for a few extra seconds right after a session ends
+    // is harmless (the user just finished). So the stop chime gets a much larger margin.
     @Volatile private var suppressWakeUntil = 0L
-    private fun chimeGuard(durationMs: Long) {
-        suppressWakeUntil = System.currentTimeMillis() + durationMs + 400
+    private val WAKE_CHIME_MARGIN_MS = 1200L
+    private val STOP_CHIME_MARGIN_MS = 3500L
+    private fun chimeGuard(durationMs: Long, marginMs: Long = WAKE_CHIME_MARGIN_MS) {
+        val until = System.currentTimeMillis() + durationMs + marginMs
+        suppressWakeUntil = until
+        Log.i(TAG, "chimeGuard: duration=$durationMs margin=$marginMs until=$until")
     }
 
     private lateinit var protocol: Protocol
@@ -65,13 +77,18 @@ class VoiceAssistant @Inject constructor(
             protocol.start()
             // Playback is wired once; incomingAudioFlow is a shared flow that survives reconnects.
             playback.start(protocol.incomingAudioFlow) {
-                if (System.currentTimeMillis() > suppressSpeakingUntil) state.value = VoiceState.SPEAKING
+                val now = System.currentTimeMillis()
+                if (state.value != VoiceState.SPEAKING) {
+                    Log.i(TAG, "playback audio chunk (not SPEAKING yet): now=$now suppressSpeakingUntil=$suppressSpeakingUntil willSetSpeaking=${now > suppressSpeakingUntil}")
+                }
+                if (now > suppressSpeakingUntil) state.value = VoiceState.SPEAKING
             }
             // Do NOT open the channel yet -> connect only on wake (avoids idle timeout).
             launch { runAudioLoop() }
             launch { protocol.incomingJsonFlow.collect(::handleServerMessage) }
             launch { TextCommands.flow.collect { onTextCommand(it) } }
             launch { state.collect { refreshLed() } }   // LED bám theo trạng thái
+            launch { state.collect { Log.i(TAG, "state -> $it isAwake=$isAwake t=${System.currentTimeMillis()}") } }
         }
     }
 
@@ -123,7 +140,7 @@ class VoiceAssistant @Inject constructor(
     }
 
     private suspend fun onWake() {
-        Log.i(TAG, ">>> wake word detected")
+        Log.i(TAG, ">>> wake word detected: isAwake=$isAwake state=${state.value} t=${System.currentTimeMillis()}")
         chimeGuard(sounds.playWake())
         if (isAwake) {
             // Speaking / music -> interrupt: flush buffered audio + suppress the SPEAKING override so
@@ -158,7 +175,7 @@ class VoiceAssistant @Inject constructor(
         Log.i(TAG, "channel closed -> waiting for wake")
         isAwake = false
         isMusic = false
-        chimeGuard(sounds.playStop())   // chuông kết thúc phiên (timeout / tạm biệt) — server không gọi AI chào nữa
+        chimeGuard(sounds.playStop(), STOP_CHIME_MARGIN_MS)   // chuông kết thúc phiên (timeout / tạm biệt) — server không gọi AI chào nữa
         state.value = VoiceState.IDLE
         wakeWord.reset()
     }
@@ -168,11 +185,14 @@ class VoiceAssistant @Inject constructor(
             "tts" -> when (json.optString("state")) {
                 "start" -> {
                     aborted = false
-                    if (state.value != VoiceState.LISTENING || state.value == VoiceState.IDLE) {
+                    val willSet = state.value != VoiceState.LISTENING || state.value == VoiceState.IDLE
+                    Log.i(TAG, "tts start: state=${state.value} willSetSpeaking=$willSet t=${System.currentTimeMillis()}")
+                    if (willSet) {
                         state.value = VoiceState.SPEAKING
                     }
                 }
                 "stop" -> scope.launch {
+                    Log.i(TAG, "tts stop: state=${state.value} t=${System.currentTimeMillis()}")
                     if (state.value == VoiceState.SPEAKING) {
                         playback.awaitCompletion()
                         // Mở nghe lại (hội thoại liên tục). KHÔNG phát âm ở đây — tts-stop xảy ra cả sau
@@ -183,7 +203,10 @@ class VoiceAssistant @Inject constructor(
                 }
                 "sentence_start" -> json.optString("text").takeIf { it.isNotEmpty() }?.let { addMessage("assistant", it) }
             }
-            "stt" -> json.optString("text").takeIf { it.isNotEmpty() }?.let { addMessage("user", it) }
+            "stt" -> json.optString("text").takeIf { it.isNotEmpty() }?.let {
+                Log.i(TAG, "stt: text=$it t=${System.currentTimeMillis()}")
+                addMessage("user", it)
+            }
             "llm" -> json.optString("emotion").takeIf { it.isNotEmpty() }?.let { emotion.value = it }
             "music" -> { isMusic = json.optString("state") == "start"; refreshLed() }  // play_youtube -> LED nhạc
         }
@@ -191,6 +214,7 @@ class VoiceAssistant @Inject constructor(
 
     /** Hardware button: idle -> wake; speaking -> interrupt + listen; listening -> stop. */
     fun onButtonPress() {
+        Log.i(TAG, "onButtonPress: isAwake=$isAwake state=${state.value} t=${System.currentTimeMillis()}")
         scope.launch {
             when {
                 !isAwake -> {
@@ -209,7 +233,7 @@ class VoiceAssistant @Inject constructor(
                     state.value = VoiceState.LISTENING
                 }
                 else -> {
-                    chimeGuard(sounds.playStop())
+                    chimeGuard(sounds.playStop(), STOP_CHIME_MARGIN_MS)
                     isAwake = false
                     isMusic = false
                     protocol.closeAudioChannel()
