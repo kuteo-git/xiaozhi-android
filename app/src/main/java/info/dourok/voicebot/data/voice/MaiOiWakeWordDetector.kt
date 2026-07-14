@@ -94,6 +94,12 @@ class MaiOiWakeWordDetector(context: Context) : WakeWordDetector {
         // model is. No threshold below ~1.0 filters that, so barge-in isn't viable for this engine;
         // disabling it here (rather than raising the threshold further) is what actually stops the
         // self-interrupt loop. Mai oi can still WAKE from idle (strict=false) normally.
+        // Read the threshold FRESH every inference so control-panel changes apply immediately.
+        // (It used to be cached and only re-read when strict flipped -- but strict is always false
+        // while idle-waiting, which is exactly when wake detection runs, so a panel change never
+        // took effect until a full wake cycle. That looked like "threshold change does nothing".)
+        val threshold = (if (strict) Settings.maiOiThresholdSpeaking else Settings.maiOiThreshold)
+            .toFloatOrNull() ?: 0.5f
         val fire = !strict && score >= threshold
         Log.i(TAG, "score=$score threshold=$threshold strict=$strict fire=$fire t=${System.currentTimeMillis()}")
         return fire
@@ -115,13 +121,7 @@ class MaiOiWakeWordDetector(context: Context) : WakeWordDetector {
     }
 
     private var strict = false
-    private var threshold: Float = Settings.maiOiThreshold.toFloatOrNull() ?: 0.5f
-    override fun setStrict(strict: Boolean) {
-        if (this.strict == strict) return
-        this.strict = strict
-        threshold = (if (strict) Settings.maiOiThresholdSpeaking else Settings.maiOiThreshold)
-            .toFloatOrNull() ?: 0.5f
-    }
+    override fun setStrict(strict: Boolean) { this.strict = strict }
 
     private fun copyAsset(context: Context, assetPath: String, dest: File): String {
         if (!dest.exists() || dest.length() == 0L) {

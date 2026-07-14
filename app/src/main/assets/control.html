@@ -274,10 +274,12 @@ select:focus{border-color:rgba(232,69,60,.45);}
     </div>
     <div class="card">
       <div class="ch"><span class="icon-badge ib-wake"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="4" cy="16" r="1.3" fill="currentColor" stroke="none"/><path d="M7 13a6 6 0 018 0"/><path d="M9.3 15.3a3 3 0 014 0"/></svg></span><h2>Wake word</h2></div>
+      <div id="alexaWake"><!-- Alexa/Snowboy sensitivity only; hidden for other engines -->
       <div class="row"><label>Độ nhạy</label><input type="range" id="ws" min="0" max="1" step="0.05"><span class="val" id="wsv">–</span></div>
       <div class="hint">Mức 0.5 là cân bằng. Tăng nếu robot không nghe thấy "Alexa", giảm nếu bị tự thức khi TV đang bật.</div>
       <div class="row"><label>Khi phát âm</label><input type="range" id="wss" min="0" max="1" step="0.05"><span class="val" id="wssv">–</span></div>
       <div class="hint">Độ nhạy riêng khi robot đang nói hoặc phát nhạc. Nên đặt thấp hơn độ nhạy bình thường để tránh tự thức.</div>
+      </div>
       <div class="row"><label>Nguồn mic</label>
         <select id="msrc" style="flex:1">
           <option value="6">VOICE_RECOGNITION (6)</option>
@@ -369,12 +371,12 @@ select:focus{border-color:rgba(232,69,60,.45);}
       <div class="hint">Đổi engine cần restart app.</div>
     </div>
 
-    <div class="card">
-      <div class="ch"><span class="icon-badge ib-wake"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="4" cy="16" r="1.3" fill="currentColor" stroke="none"/><path d="M7 13a6 6 0 018 0"/><path d="M9.3 15.3a3 3 0 014 0"/></svg></span><h2>Mai ơi threshold</h2></div>
+    <div class="card" id="maiOiCard">
+      <div class="ch"><span class="icon-badge ib-wake"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="4" cy="16" r="1.3" fill="currentColor" stroke="none"/><path d="M7 13a6 6 0 018 0"/><path d="M9.3 15.3a3 3 0 014 0"/></svg></span><h2>Wake word — Mai ơi</h2></div>
       <div class="row"><label>Ngưỡng</label><input type="range" id="moT" min="0" max="1" step="0.05"><span class="val" id="moTv">–</span></div>
       <div class="hint">Đây là NGƯỠNG điểm số, không phải độ nhạy — NGƯỢC hướng với slider "Độ nhạy" của Alexa ở trên: thấp hơn = dễ kích hoạt hơn (nhạy hơn), cao hơn = chặt hơn (khó kích hoạt hơn). Mức 0.5 là cân bằng (thật đo được: dương ~0.95-1.0, âm khó ~0.00-0.02).</div>
-      <div class="row"><label>Khi phát âm</label><input type="range" id="moTs" min="0" max="1" step="0.05"><span class="val" id="moTsv">–</span></div>
-      <div class="hint">Ngưỡng riêng khi robot đang nói hoặc phát nhạc — nên đặt CAO hơn ngưỡng bình thường (không phải thấp hơn) để tránh robot tự nghe thấy giọng mình mà tự thức (máy này không có AEC).</div>
+      <!-- speaking-threshold hidden: barge-in-while-speaking is disabled for Mai ơi, so this is a dead knob -->
+      <div style="display:none"><div class="row"><label>Khi phát âm</label><input type="range" id="moTs" min="0" max="1" step="0.05"><span class="val" id="moTsv">–</span></div></div>
     </div>
 
     <div class="card">
@@ -486,6 +488,7 @@ function render(s){
   $('weAlexa').classList.toggle('on',(s.wake_engine||'alexa')==='alexa');
   $('weNabu').classList.toggle('on',s.wake_engine==='nabu');
   $('weMaiOi').classList.toggle('on',s.wake_engine==='mai_oi');
+  wakeUI(s.wake_engine||'alexa');
   $('moT').value=parseFloat(s.mai_oi_threshold||'0.5');$('moTv').textContent=s.mai_oi_threshold||'0.5';
   $('moTs').value=parseFloat(s.mai_oi_threshold_speaking||'0.5');$('moTsv').textContent=s.mai_oi_threshold_speaking||'0.5';
   const sig=JSON.stringify(s.chat);
@@ -575,7 +578,12 @@ async function connectServer(){$('srvStat').textContent='Connecting…';
     logSetup('connect '+(j.ok?('✓ '+j.ws_url+' ['+j.src+']'):('✗ '+j.error)));}
   catch(e){$('srvStat').textContent='✗ '+e;logSetup('connect ✗ '+e);}}
 function setWake(e){$('weAlexa').classList.toggle('on',e==='alexa');$('weNabu').classList.toggle('on',e==='nabu');$('weMaiOi').classList.toggle('on',e==='mai_oi');
+  wakeUI(e);
   fetch('/api/setup/wake?engine='+e,{method:'POST'});logSetup('wake engine -> '+e);}
+// Show only the sensitivity control that applies to the selected engine (Alexa uses wake_sensitivity;
+// Mai ơi uses mai_oi_threshold; OK Nabu has a fixed cutoff -> neither). Avoids dead sliders.
+function wakeUI(e){var a=document.getElementById('alexaWake'),m=document.getElementById('maiOiCard');
+  if(a)a.style.display=(e==='alexa')?'':'none'; if(m)m.style.display=(e==='mai_oi')?'':'none';}
 
 // ── Home Assistant device manager ─────────────────
 const HA_DOMAINS=['all','light','switch','fan','media_player','script','climate','cover'];
