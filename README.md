@@ -13,26 +13,34 @@ replacement for its stock firmware app, but it is a standard Android app and run
 > Setup tab (see [Server endpoint](#server-endpoint)) before use.
 
 > Forked from [douo/xiaozhi-android](https://github.com/douo/xiaozhi-android). Rewritten around a
-> clean-architecture core, with a selectable wake word ("Alexa" / "OK Nabu"), hardware-button
+> clean-architecture core, with a selectable wake word ("Alexa" / "OK Nabu" / a custom "Na Bi ơi"), hardware-button
 > control, LED feedback, and an on-device web control panel for setup.
 
 https://github.com/user-attachments/assets/1ee53869-1987-4e1f-a64a-26c7c0ec032f
 
 ## Features
 
-- **Wake word** — on-device detection, selectable between [Snowboy](https://github.com/Kitt-AI/snowboy)
-  "Alexa" (`alexa2.umdl`) and [microWakeWord](https://github.com/kahrendt/microWakeWord) "OK Nabu".
-  Adjustable sensitivity, including a separate (stricter) sensitivity while the assistant is speaking
-  so TTS playback doesn't self-trigger.
+- **Wake word** — on-device detection, selectable between three engines: [Snowboy](https://github.com/Kitt-AI/snowboy)
+  "Alexa" (`alexa2.umdl`), [microWakeWord](https://github.com/kahrendt/microWakeWord) "OK Nabu", and a
+  custom microWakeWord model **"Na Bi ơi"** (`assets/mai_oi/mai_oi.tflite`, trained under
+  `services/wakeword_training` in the server repo). Alexa exposes an adjustable sensitivity (plus a
+  stricter one while speaking); "Na Bi ơi" exposes a score threshold; "OK Nabu" has a fixed cutoff
+  compiled into its `.so` and is not tunable.
 - **Connect-on-wake** — no server connection until the wake word fires (avoids idle timeouts).
-- **Continuous conversation** — stays in the session across turns; the server ends it after silence.
-- **Barge-in / interrupt** — saying the wake word (or pressing the button) while the assistant is
-  speaking or playing music stops it and starts listening again. Acoustic echo cancellation keeps
-  the wake word audible over the speaker.
+- **Continuous conversation** — stays in the session across turns; the server ends it after silence, and
+  a client-side backstop sleeps the device after several replies with no real user speech (a runaway
+  false-wake guard, reset whenever the user actually speaks).
+- **Interrupt** — pressing the hardware button while the assistant is speaking or playing music stops it.
+  The R1 has no working acoustic echo cancellation in the app's capture path (the 4-mic array's AEC
+  lives in the vendor DSP, which the app bypasses by reading the raw Android mic), so *voice* barge-in
+  while audio is playing is unreliable and is disabled for the "Na Bi ơi" engine — the button is the
+  reliable interrupt.
+- **No self-hearing** — while the assistant's own speaker is emitting audio, the mic is not streamed to
+  the STT server (a playback-gated mute), so the robot never transcribes its own TTS as a user turn.
 - **Far-field mic AGC** — a software automatic-gain-control stage applied only while actively
   listening for speech (before Opus encoding), so quiet/far speech reaches the STT server at a
   usable level without amplifying idle background noise.
-- **Hardware button** (R1 `KEYCODE_PHICOMM_OK`): idle → wake · speaking → interrupt · listening → stop.
+- **Hardware button** (R1 `KEYCODE_PHICOMM_OK`): idle → wake · awake (listening or speaking) → sleep.
 - **LED feedback** — the R1 LED ring lights up in different colors for listening / speaking / music,
   via the `msgcenter` system service.
 - **Boot start** — launches automatically on device boot.
@@ -64,7 +72,7 @@ domain (domain/voice/)
   ports: WakeWordDetector · AudioCapture · AudioPlayback · SoundEffects · LedIndicator
         │
 data (data/voice/)
-  SnowboyWakeWordDetector · MicroWakeWordDetector
+  SnowboyWakeWordDetector · MicroWakeWordDetector · MaiOiWakeWordDetector
   RecorderAudioCapture ───── owns the single AudioRecord (mic is held exclusively, continuously)
   OpusAudioPlayback · AudioTrackSoundEffects
   MsgCenterLedIndicator ──── LED ring via the msgcenter system service (reflection, not sysfs)
@@ -146,9 +154,11 @@ rebuilding it. Open `http://<device-ip>:8088` from any browser on the same netwo
 
 ### What you can do from it
 
-- **Setup tab** — server/OTA URL, wake engine (Alexa / OK Nabu) and sensitivity, LLM provider/model/
-  API key with a connectivity test, Home Assistant URL/token with device fetch + search + annotate,
-  and the Assistant persona (custom system prompt) — all live-editable, some require an app restart
+- **Setup tab** — server/OTA URL; a single **Wake word** card that groups the engine selector
+  (Alexa / OK Nabu / Na Bi ơi) with the selected engine's own control (Alexa sensitivity, "Na Bi ơi"
+  threshold, or a note that "OK Nabu" is not tunable); LLM provider/model/API key with a connectivity
+  test; Home Assistant URL/token with device fetch + search + annotate; the Assistant persona (custom
+  system prompt); and **Restart app** as the last card. All live-editable, some require an app restart
   to take effect (notably mic source and sample rate, since `AudioRecord` is opened once at start).
 - **Mic test (A/B)** — since the wake-word detector holds the microphone exclusively, the test taps
   into the same audio loop instead of opening a second `AudioRecord`. Two modes:
@@ -159,7 +169,7 @@ rebuilding it. Open `http://<device-ip>:8088` from any browser on the same netwo
 - **LED control** — trigger LED states directly for testing.
 - **Chat log** — recent conversation turns with real timestamps (from when the message actually
   happened, not from when the browser polled for it).
-- **Restart** — restart the app process from the panel.
+- **Restart** — restart the app process from the panel (the last card in the Setup tab).
 
 ### HTTP API
 
@@ -199,7 +209,7 @@ readable/writable through the control panel or its HTTP API.
 
 | Category | Keys |
 |---|---|
-| Wake word | `wakeEngine`, `wakeSensitivity`, `wakeSensitivitySpeaking` |
+| Wake word | `wakeEngine`, `wakeSensitivity`, `wakeSensitivitySpeaking`, `maiOiThreshold`, `maiOiThresholdSpeaking` |
 | Mic / AGC | `micSource`, `micGain`, `agcEnabled`, `agcTarget`, `agcMaxGain` |
 | LED | `ledIdle`, `ledListening`, `ledSpeaking`, `ledMusic` |
 | Audio playback | `volume`, `eqEnabled`, `eqBands`, `playbackSampleRate` |
