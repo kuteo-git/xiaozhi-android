@@ -79,8 +79,12 @@ class VoiceAssistant @Inject constructor(
     // the session idle out, so the robot ends up "chatting with the TV". Bound how many back-to-back
     // auto-listen turns a single wake can spawn; after the cap it sleeps and waits for a fresh wake.
     // A real hands-free conversation just re-says "Mai ơi" to keep going.
+    // Blast-radius backstop: robot replies since the user last actually spoke (reset on real STT).
+    // A live conversation resets this every turn, so it only trips on a genuine runaway (many replies
+    // with zero user speech). Set above the max TTS segments one long answer can emit (filler + a
+    // multi-segment answer) so a single reply can never trip it.
     @Volatile private var autoTurns = 0
-    private val MAX_AUTO_TURNS = 4
+    private val MAX_AUTO_TURNS = 8
     private fun chimeGuard(durationMs: Long, marginMs: Long = WAKE_CHIME_MARGIN_MS) {
         val until = System.currentTimeMillis() + durationMs + marginMs
         suppressWakeUntil = until
@@ -229,8 +233,8 @@ class VoiceAssistant @Inject constructor(
                     if (state.value == VoiceState.SPEAKING) {
                         playback.awaitCompletion()
                         if (++autoTurns > MAX_AUTO_TURNS) {
-                            // Too many back-to-back auto turns from one wake -> almost certainly a
-                            // false wake feeding on ambient (TV) speech. Sleep instead of re-listening.
+                            // Many replies with no real user speech in between (STT resets this) ->
+                            // almost certainly a false wake feeding on ambient. Sleep, don't re-listen.
                             Log.i(TAG, "auto-listen turn cap ($MAX_AUTO_TURNS) reached -> sleep")
                             backToWake()               // isAwake=false first, so the audio loop won't double-fire
                             protocol.closeAudioChannel()
@@ -246,6 +250,10 @@ class VoiceAssistant @Inject constructor(
             }
             "stt" -> json.optString("text").takeIf { it.isNotEmpty() }?.let {
                 Log.i(TAG, "stt: text=$it t=${System.currentTimeMillis()}")
+                // A real user utterance means the conversation is alive -> reset the auto-turn cap.
+                // Without this the cap counts TTS segments (filler + answer + each answer segment all
+                // fire 'tts stop'), not conversation turns, and ends the session mid-chat after ~2 turns.
+                autoTurns = 0
                 addMessage("user", it)
             }
             "llm" -> json.optString("emotion").takeIf { it.isNotEmpty() }?.let { emotion.value = it }
