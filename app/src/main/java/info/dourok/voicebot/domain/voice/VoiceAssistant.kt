@@ -46,6 +46,18 @@ class VoiceAssistant @Inject constructor(
     // state back to SPEAKING (which would stop streaming the mic and lose the user's question).
     @Volatile private var suppressSpeakingUntil = 0L
 
+    // The R1 has a 4-mic array in hardware, but that array's beamforming + echo cancellation lived in
+    // PHICOMM's vendor DSP firmware. This app reads the raw Android mic (VOICE_RECOGNITION source, one
+    // downmixed channel, no working AEC against our own speaker), so it cannot stream the mic to the
+    // server while its own speaker is emitting TTS, or the STT transcribes the robot's own voice (it
+    // then answers itself, looping). The SPEAKING state approximates this, but leaks: on `tts start`
+    // the state stays LISTENING (willSet=false), and it only flips on the first playback chunk -- so
+    // the gap before the first chunk, and every between-segment LISTENING window (e.g. after the
+    // thinking-filler's `tts stop`), streams our own audio. This is the authoritative guard, keyed on
+    // real speaker output: bump it on every played chunk, and refuse to stream the mic until it lapses.
+    @Volatile private var micGateUntil = 0L
+    private val MIC_GATE_TAIL_MS = 350L  // reverb/echo tail after the last played chunk
+
     // While one of our own chimes (wake/stop) is physically still playing out the speaker, don't run
     // wake-word detection at all -- this device has no AEC, so the mic hears its own chime (the stop
     // chime is 2.3s, boosted 25% gain) and the model can score that as a real wake. The "Mai ơi"
@@ -89,7 +101,12 @@ class VoiceAssistant @Inject constructor(
                 if (state.value != VoiceState.SPEAKING) {
                     Log.i(TAG, "playback audio chunk (not SPEAKING yet): now=$now suppressSpeakingUntil=$suppressSpeakingUntil willSetSpeaking=${now > suppressSpeakingUntil}")
                 }
-                if (now > suppressSpeakingUntil) state.value = VoiceState.SPEAKING
+                // Only guard the mic when we're NOT in a post-interrupt suppression window: there we
+                // deliberately keep streaming so the user's barge-in command is captured.
+                if (now > suppressSpeakingUntil) {
+                    micGateUntil = now + MIC_GATE_TAIL_MS  // speaker is emitting -> mute mic stream
+                    state.value = VoiceState.SPEAKING
+                }
             }
             // Do NOT open the channel yet -> connect only on wake (avoids idle timeout).
             launch { runAudioLoop() }
@@ -133,8 +150,14 @@ class VoiceAssistant @Inject constructor(
                 if (isAwake && !protocol.isAudioChannelOpened()) backToWake()
 
                 if (isAwake && state.value == VoiceState.LISTENING) {
-                    if (Settings.agcEnabled) agc.process(pcm, pcm.size)  // kéo giọng xa lên TRƯỚC opus
-                    encoder?.encode(pcm)?.let { protocol.sendAudio(it) }
+                    // No-AEC single mic: never stream while our own speaker is (still) emitting, or the
+                    // STT transcribes the robot's own TTS as a user turn (see micGateUntil).
+                    if (System.currentTimeMillis() < micGateUntil) {
+                        // robot audio still audible -> drop this frame instead of feeding it back
+                    } else {
+                        if (Settings.agcEnabled) agc.process(pcm, pcm.size)  // kéo giọng xa lên TRƯỚC opus
+                        encoder?.encode(pcm)?.let { protocol.sendAudio(it) }
+                    }
                 } else if (wakeWord.isReady && System.currentTimeMillis() >= suppressWakeUntil) {
                     // Wait-for-wake (idle) OR interrupt-while-speaking. Use a stricter threshold
                     // while speaking so the speaker output doesn't false-trigger; AEC keeps a real
