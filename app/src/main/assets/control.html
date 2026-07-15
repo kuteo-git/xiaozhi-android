@@ -273,14 +273,8 @@ select:focus{border-color:rgba(232,69,60,.45);}
       <div class="hint">Chỉnh âm sắc 5 dải tần (±15 dB). Mặc định tắt — bật để boost bass hoặc treble theo ý thích. Áp dụng ngay.</div>
     </div>
     <div class="card">
-      <div class="ch"><span class="icon-badge ib-wake"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="4" cy="16" r="1.3" fill="currentColor" stroke="none"/><path d="M7 13a6 6 0 018 0"/><path d="M9.3 15.3a3 3 0 014 0"/></svg></span><h2>Wake word</h2></div>
-      <div id="alexaWake"><!-- Alexa/Snowboy sensitivity only; hidden for other engines -->
-      <div class="row"><label>Độ nhạy</label><input type="range" id="ws" min="0" max="1" step="0.05"><span class="val" id="wsv">–</span></div>
-      <div class="hint">Mức 0.5 là cân bằng. Tăng nếu robot không nghe thấy "Alexa", giảm nếu bị tự thức khi TV đang bật.</div>
-      <div class="row"><label>Khi phát âm</label><input type="range" id="wss" min="0" max="1" step="0.05"><span class="val" id="wssv">–</span></div>
-      <div class="hint">Độ nhạy riêng khi robot đang nói hoặc phát nhạc. Nên đặt thấp hơn độ nhạy bình thường để tránh tự thức.</div>
-      </div>
-      <div class="row"><label>Nguồn mic</label>
+      <div class="ch"><span class="icon-badge ib-mic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="7.5" y="2" width="5" height="9" rx="2.5" fill="currentColor" stroke="none"/><path d="M4.5 9.5a5.5 5.5 0 0011 0"/><line x1="10" y1="15" x2="10" y2="18"/><line x1="7" y1="18" x2="13" y2="18"/></svg></span><h2>Nguồn mic</h2></div>
+      <div class="row"><label>Nguồn</label>
         <select id="msrc" style="flex:1">
           <option value="6">VOICE_RECOGNITION (6)</option>
           <option value="7">VOICE_COMMUNICATION (7)</option>
@@ -317,8 +311,7 @@ select:focus{border-color:rgba(232,69,60,.45);}
       <div class="ch"><span class="icon-badge ib-sys"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="10" cy="10" r="3"/><circle cx="10" cy="10" r="1" fill="currentColor" stroke="none"/><line x1="10" y1="2" x2="10" y2="4.2"/><line x1="10" y1="15.8" x2="10" y2="18"/><line x1="2" y1="10" x2="4.2" y2="10"/><line x1="15.8" y1="10" x2="18" y2="10"/><line x1="4.6" y1="4.6" x2="6.1" y2="6.1"/><line x1="13.9" y1="13.9" x2="15.4" y2="15.4"/><line x1="15.4" y1="4.6" x2="13.9" y2="6.1"/><line x1="6.1" y1="13.9" x2="4.6" y2="15.4"/></svg></span><h2>Hệ thống</h2></div>
       <div class="row"><label>Sample rate</label>
         <div class="segsel" style="flex:1"><button id="sr24" onclick="setSr(24000)">24 kHz</button><button id="sr48" onclick="setSr(48000)">48 kHz</button></div></div>
-      <div class="hint" style="margin:-2px 0 12px">Tốc độ lấy mẫu audio phát lại. Dùng 48 kHz (mặc định) — chuyển sang 24 kHz nếu âm thanh bị giật hoặc đơ. Phải khớp với cài đặt server. Đổi cần restart app.</div>
-      <button class="btn warn" onclick="restart()">↻ Restart app</button>
+      <div class="hint" style="margin:-2px 0 0">Tốc độ lấy mẫu audio phát lại. Dùng 48 kHz (mặc định) — chuyển sang 24 kHz nếu âm thanh bị giật hoặc đơ. Phải khớp với cài đặt server. Đổi cần restart app.</div>
     </div>
   </div>
 </div>
@@ -366,22 +359,41 @@ select:focus{border-color:rgba(232,69,60,.45);}
     </div>
 
     <div class="card">
-      <div class="ch"><span class="icon-badge ib-wake"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="4" cy="16" r="1.3" fill="currentColor" stroke="none"/><path d="M7 13a6 6 0 018 0"/><path d="M9.3 15.3a3 3 0 014 0"/></svg></span><h2>Wake engine</h2></div>
-      <div class="row"><label>Engine</label><div class="segsel" style="flex:1"><button id="weAlexa" onclick="setWake('alexa')">Alexa</button><button id="weNabu" onclick="setWake('nabu')">OK Nabu</button><button id="weMaiOi" onclick="setWake('mai_oi')">Mai ơi</button></div></div>
-      <div class="hint">Đổi engine cần restart app.</div>
-    </div>
+      <div class="ch"><span class="icon-badge ib-wake"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="4" cy="16" r="1.3" fill="currentColor" stroke="none"/><path d="M7 13a6 6 0 018 0"/><path d="M9.3 15.3a3 3 0 014 0"/></svg></span><h2>Wake word</h2></div>
+      <div class="row"><label>Engine</label><div class="segsel" style="flex:1"><button id="weAlexa" onclick="setWake('alexa')">Alexa</button><button id="weNabu" onclick="setWake('nabu')">OK Nabu</button><button id="weMaiOi" onclick="setWake('mai_oi')">Na Bi ơi</button></div></div>
+      <div class="hint">Đổi engine cần restart app. Ngưỡng/độ nhạy bên dưới là của engine đang chọn.</div>
 
-    <div class="card" id="maiOiCard">
-      <div class="ch"><span class="icon-badge ib-wake"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="4" cy="16" r="1.3" fill="currentColor" stroke="none"/><path d="M7 13a6 6 0 018 0"/><path d="M9.3 15.3a3 3 0 014 0"/></svg></span><h2>Wake word — Mai ơi</h2></div>
-      <div class="row"><label>Ngưỡng</label><input type="range" id="moT" min="0" max="1" step="0.05"><span class="val" id="moTv">–</span></div>
-      <div class="hint">Đây là NGƯỠNG điểm số, không phải độ nhạy — NGƯỢC hướng với slider "Độ nhạy" của Alexa ở trên: thấp hơn = dễ kích hoạt hơn (nhạy hơn), cao hơn = chặt hơn (khó kích hoạt hơn). Mức 0.5 là cân bằng (thật đo được: dương ~0.95-1.0, âm khó ~0.00-0.02).</div>
-      <!-- speaking-threshold hidden: barge-in-while-speaking is disabled for Mai ơi, so this is a dead knob -->
-      <div style="display:none"><div class="row"><label>Khi phát âm</label><input type="range" id="moTs" min="0" max="1" step="0.05"><span class="val" id="moTsv">–</span></div></div>
+      <!-- Alexa (Snowboy): tunable sensitivity -->
+      <div id="alexaWake">
+        <div class="row"><label>Độ nhạy</label><input type="range" id="ws" min="0" max="1" step="0.05"><span class="val" id="wsv">–</span></div>
+        <div class="hint">Mức 0.5 là cân bằng. Tăng nếu robot không nghe thấy "Alexa", giảm nếu bị tự thức khi TV đang bật.</div>
+        <div class="row"><label>Khi phát âm</label><input type="range" id="wss" min="0" max="1" step="0.05"><span class="val" id="wssv">–</span></div>
+        <div class="hint">Độ nhạy riêng khi robot đang nói hoặc phát nhạc. Nên đặt thấp hơn độ nhạy bình thường để tránh tự thức.</div>
+      </div>
+
+      <!-- OK Nabu: cutoff is compiled into libmicro_wake_word_jni.so -> nothing to tune -->
+      <div id="nabuWake">
+        <div class="hint">OK Nabu dùng model dựng sẵn với ngưỡng cố định trong thư viện — không chỉnh được (cũng là lý do nó rất ổn định). Nếu bị tự thức hoặc khó gọi, hãy đổi sang engine khác.</div>
+      </div>
+
+      <!-- Na Bi ơi (microWakeWord): tunable score threshold -->
+      <div id="maiOiWake">
+        <div class="row"><label>Ngưỡng</label><input type="range" id="moT" min="0" max="1" step="0.05"><span class="val" id="moTv">–</span></div>
+        <div class="hint">Đây là NGƯỠNG điểm số, không phải độ nhạy — NGƯỢC hướng với "Độ nhạy" của Alexa: thấp hơn = dễ kích hoạt hơn (nhạy hơn), cao hơn = chặt hơn (khó kích hoạt hơn). Mức 0.5 là cân bằng (thật đo được: dương ~0.95-1.0, âm khó ~0.00-0.02).</div>
+        <!-- speaking-threshold hidden: barge-in-while-speaking is disabled for Na Bi ơi, so this is a dead knob -->
+        <div style="display:none"><div class="row"><label>Khi phát âm</label><input type="range" id="moTs" min="0" max="1" step="0.05"><span class="val" id="moTsv">–</span></div></div>
+      </div>
     </div>
 
     <div class="card">
       <div class="ch"><span class="icon-badge ib-sys"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h12v9H4z"/><line x1="7" y1="7" x2="13" y2="7"/><line x1="7" y1="10" x2="11" y2="10"/></svg></span><h2>Log</h2></div>
       <div class="hint" id="setupLog" style="white-space:pre-wrap;max-height:120px;overflow:auto;font-family:ui-monospace,'SF Mono',monospace;font-size:11px"></div>
+    </div>
+
+    <div class="card">
+      <div class="ch"><span class="icon-badge ib-sys"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16 6a7 7 0 10.8 6"/><path d="M16 2.5v4h-4"/></svg></span><h2>Ứng dụng</h2></div>
+      <button class="btn warn" onclick="restart()">↻ Restart app</button>
+      <div class="hint" style="margin-top:8px">Khởi động lại app để áp dụng các thay đổi cần restart (engine, nguồn mic, sample rate).</div>
     </div>
   </div>
 </div>
@@ -582,8 +594,10 @@ function setWake(e){$('weAlexa').classList.toggle('on',e==='alexa');$('weNabu').
   fetch('/api/setup/wake?engine='+e,{method:'POST'});logSetup('wake engine -> '+e);}
 // Show only the sensitivity control that applies to the selected engine (Alexa uses wake_sensitivity;
 // Mai ơi uses mai_oi_threshold; OK Nabu has a fixed cutoff -> neither). Avoids dead sliders.
-function wakeUI(e){var a=document.getElementById('alexaWake'),m=document.getElementById('maiOiCard');
-  if(a)a.style.display=(e==='alexa')?'':'none'; if(m)m.style.display=(e==='mai_oi')?'':'none';}
+function wakeUI(e){var a=document.getElementById('alexaWake'),n=document.getElementById('nabuWake'),m=document.getElementById('maiOiWake');
+  if(a)a.style.display=(e==='alexa')?'':'none';
+  if(n)n.style.display=(e==='nabu')?'':'none';
+  if(m)m.style.display=(e==='mai_oi')?'':'none';}
 
 // ── Home Assistant device manager ─────────────────
 const HA_DOMAINS=['all','light','switch','fan','media_player','script','climate','cover'];
