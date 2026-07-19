@@ -10,9 +10,13 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import dagger.hilt.android.qualifiers.ApplicationContext
+import info.dourok.voicebot.domain.voice.MediaCoordinator
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -32,6 +36,7 @@ class MediaPlayerController @Inject constructor(
     @ApplicationContext context: Context,
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val scope = CoroutineScope(SupervisorJob())
     private val player = ExoPlayer.Builder(context).build()
     private val session = MediaSession.Builder(context, player).build()
 
@@ -55,11 +60,14 @@ class MediaPlayerController @Inject constructor(
                 _state.value = _state.value.copy(playing = isPlaying)
             }
             override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_READY) {
-                    _state.value = _state.value.copy(
+                when (playbackState) {
+                    Player.STATE_READY -> _state.value = _state.value.copy(
                         downloadState = DownloadState.READY,
                         durationMs = player.duration.coerceAtLeast(0),
                     )
+                    // Track finished on its own (not paused/stopped) -> control.html auto-advances
+                    // to the next item in its currently displayed list.
+                    Player.STATE_ENDED -> _state.value = _state.value.copy(ended = true, playing = false)
                 }
             }
             override fun onPlayerError(error: PlaybackException) {
@@ -71,6 +79,12 @@ class MediaPlayerController @Inject constructor(
             }
         })
         mainHandler.post(positionTicker)
+        // Voice-triggered music (play_youtube) always wins over a web-triggered track.
+        scope.launch {
+            MediaCoordinator.voiceMusicActive.collect { active ->
+                if (active) mainHandler.post { player.pause() }
+            }
+        }
     }
 
     /** Called by ControlServer right before it asks pytube_api to ensure [videoId] is cached. */
@@ -90,6 +104,7 @@ class MediaPlayerController @Inject constructor(
 
     /** Starts playback once pytube_api has confirmed [streamUrl] (its /v3/mp3/<id> URL) is ready. */
     fun play(videoId: String, streamUrl: String, title: String, artist: String, coverUrl: String) {
+        MediaCoordinator.webPlayRequested.tryEmit(Unit)  // interrupt whatever the voice pipeline is doing
         mainHandler.post {
             val item = MediaItem.Builder()
                 .setUri(streamUrl)

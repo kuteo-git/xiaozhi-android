@@ -116,6 +116,9 @@ class VoiceAssistant @Inject constructor(
             launch { runAudioLoop() }
             launch { protocol.incomingJsonFlow.collect(::handleServerMessage) }
             launch { TextCommands.flow.collect { onTextCommand(it) } }
+            // A web-triggered play (Media Player tab) must win over whatever the voice pipeline is
+            // doing -- same interrupt path as a wake-word barge-in.
+            launch { MediaCoordinator.webPlayRequested.collect { interruptPlayback() } }
             launch { state.collect { refreshLed() } }   // LED bám theo trạng thái
             launch { state.collect { Log.i(TAG, "state -> $it isAwake=$isAwake t=${System.currentTimeMillis()}") } }
         }
@@ -212,6 +215,7 @@ class VoiceAssistant @Inject constructor(
         Log.i(TAG, "channel closed -> waiting for wake")
         isAwake = false
         isMusic = false
+        MediaCoordinator.voiceMusicActive.value = false
         chimeGuard(sounds.playStop(), STOP_CHIME_MARGIN_MS)   // chuông kết thúc phiên (timeout / tạm biệt) — server không gọi AI chào nữa
         state.value = VoiceState.IDLE
         wakeWord.reset()
@@ -257,7 +261,11 @@ class VoiceAssistant @Inject constructor(
                 addMessage("user", it)
             }
             "llm" -> json.optString("emotion").takeIf { it.isNotEmpty() }?.let { emotion.value = it }
-            "music" -> { isMusic = json.optString("state") == "start"; refreshLed() }  // play_youtube -> LED nhạc
+            "music" -> {
+                isMusic = json.optString("state") == "start"
+                MediaCoordinator.voiceMusicActive.value = isMusic  // pause the web player + reflect it there
+                refreshLed()
+            }  // play_youtube -> LED nhạc
         }
     }
 

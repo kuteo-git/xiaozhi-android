@@ -14,4 +14,7 @@ data class MediaPlayerState(
     val durationMs: Long = 0,
     val downloadState: DownloadState = DownloadState.IDLE,
     val errorMessage: String? = null,
+    /** True once the current track finishes playing on its own (not paused/stopped by the user).
+     *  Reset by the next markDownloading()/play() call. Drives auto-advance in control.html. */
+    val ended: Boolean = false,
 )

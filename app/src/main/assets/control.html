@@ -714,6 +714,24 @@ let mediaSearchTimer=null;
 let mediaState={playing:false,video_id:null,download_state:'idle'};
 let mediaPollTimer=null;
 let npSeekDragging=false;
+let lastAutoAdvanced=null;
+
+// Persist the last search (query + results) across page reloads -- searching is a network call,
+// losing it on every refresh is annoying and pointless since the results themselves don't change
+// from one reload to the next.
+function saveMediaSearchState(){
+  try{localStorage.setItem('r1-media-search',JSON.stringify({q:$('mediaSearch').value,results:mediaResultsCache}));}catch(e){}
+}
+function restoreMediaSearchState(){
+  try{
+    const raw=localStorage.getItem('r1-media-search');
+    if(!raw)return;
+    const s=JSON.parse(raw);
+    $('mediaSearch').value=s.q||'';
+    mediaResultsCache=s.results||[];
+    renderMediaResults();
+  }catch(e){}
+}
 
 function onMediaSearchInput(){
   clearTimeout(mediaSearchTimer);
@@ -721,11 +739,12 @@ function onMediaSearchInput(){
   mediaSearchTimer=setTimeout(()=>mediaSearch(q),400);
 }
 async function mediaSearch(q){
-  if(!q){mediaResultsCache=[];renderMediaResults();return;}
+  if(!q){mediaResultsCache=[];renderMediaResults();saveMediaSearchState();return;}
   try{
     const j=await(await fetch('/api/media/search?q='+encodeURIComponent(q))).json();
     mediaResultsCache=j.ok?j.results:[];
     renderMediaResults(j.ok?null:j.error);
+    saveMediaSearchState();
   }catch(e){mediaResultsCache=[];renderMediaResults('Lỗi tìm kiếm');}
 }
 function renderMediaResults(err){
@@ -750,6 +769,18 @@ function applyMediaButtonStates(){
     b.classList.toggle('error',active&&mediaState.download_state==='error');
   });
 }
+// Keep the currently-playing track pinned at index 0 so it's always visible without scrolling,
+// whether playback started from this list or from a voice command. Returns true if the order
+// actually changed (caller re-renders only then, to avoid needless flicker on every poll tick).
+function pinPlayingToTop(videoId){
+  if(!videoId)return false;
+  const i=mediaResultsCache.findIndex(x=>x.video_id===videoId);
+  if(i<=0)return false;
+  const[item]=mediaResultsCache.splice(i,1);
+  mediaResultsCache.unshift(item);
+  saveMediaSearchState();
+  return true;
+}
 function mediaPlay(videoId){
   const r=mediaResultsCache.find(x=>x.video_id===videoId);
   if(!r)return;
@@ -768,9 +799,28 @@ function mediaStep(dir){
 }
 function renderNowPlaying(s){
   mediaState=s;
+  if(pinPlayingToTop(s.video_id))renderMediaResults();
+  // Track finished on its own -> advance to the next item in the currently displayed list (once
+  // per finish; lastAutoAdvanced guards against re-triggering on every poll tick while ended stays true).
+  if(s.ended&&s.video_id&&s.video_id!==lastAutoAdvanced){
+    lastAutoAdvanced=s.video_id;
+    mediaStep(1);
+  }
   const np=$('nowPlaying');
-  if(!s.video_id){np.hidden=true;applyMediaButtonStates();return;}
+  if(!s.video_id&&!s.voice_active){np.hidden=true;applyMediaButtonStates();return;}
   np.hidden=false;
+  if(s.voice_active&&!s.video_id){
+    // Playing via voice chat (play_youtube) -- no per-track metadata or seek/prev/next available,
+    // just reflect that something is playing so it isn't a silent gap in the panel.
+    $('npCover').src='';
+    $('npTitle').textContent=s.title||'🎵 Đang phát qua giọng nói';
+    $('npArtist').textContent='';
+    $('npPlay').textContent='⏸';
+    $('npSeek').max=0;$('npSeek').value=0;
+    $('npPrev').disabled=true;$('npNext').disabled=true;
+    applyMediaButtonStates();
+    return;
+  }
   $('npCover').src=s.cover_url||'';
   $('npTitle').textContent=s.title||'';
   $('npArtist').textContent=s.artist||'';
@@ -794,6 +844,7 @@ function mediaPollStop(){clearInterval(mediaPollTimer);mediaPollTimer=null;}
 async function mediaPollTick(){
   try{renderNowPlaying(await(await fetch('/api/media/state')).json());}catch(e){}
 }
+restoreMediaSearchState();
 
 poll();setInterval(poll,1500);
 // loadVoices() now runs from render() once tts_host arrives (de-hardcoded server host).

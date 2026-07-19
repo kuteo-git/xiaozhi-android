@@ -15,6 +15,7 @@ import info.dourok.voicebot.domain.voice.AudioPlayback
 import info.dourok.voicebot.domain.voice.ConversationLog
 import info.dourok.voicebot.domain.voice.LedIndicator
 import info.dourok.voicebot.domain.voice.LedState
+import info.dourok.voicebot.domain.voice.MediaCoordinator
 import info.dourok.voicebot.domain.voice.MicTest
 import info.dourok.voicebot.domain.voice.TextCommands
 import okhttp3.MediaType.Companion.toMediaType
@@ -471,16 +472,21 @@ class ControlServer @Inject constructor(
 
     private fun buildMediaState(): String {
         val s = mediaPlayer.state.value
+        val voiceActive = MediaCoordinator.voiceMusicActive.value
         return JSONObject()
-            .put("playing", s.playing)
+            .put("playing", s.playing || voiceActive)
             .put("video_id", s.videoId)
-            .put("title", s.title)
+            // No title/artist is available for voice-triggered plays (play_youtube.py doesn't send
+            // track metadata over the WS) -- show a generic label instead of leaving it blank.
+            .put("title", if (voiceActive && s.videoId == null) "Đang phát qua giọng nói" else s.title)
             .put("artist", s.artist)
             .put("cover_url", s.coverUrl)
             .put("position_ms", s.positionMs)
             .put("duration_ms", s.durationMs)
             .put("download_state", s.downloadState.name.lowercase())
             .put("error_message", s.errorMessage)
+            .put("ended", s.ended)
+            .put("voice_active", voiceActive)
             .toString()
     }
 
