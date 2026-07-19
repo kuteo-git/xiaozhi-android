@@ -39,6 +39,7 @@ class ControlServer @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val playback: AudioPlayback,
     private val led: LedIndicator,
+    private val mediaPlayer: info.dourok.voicebot.media.MediaPlayerController,
 ) : NanoHTTPD(PORT) {
 
     fun startServer() {
@@ -81,6 +82,15 @@ class ControlServer @Inject constructor(
             "/api/llm/test" -> json(handleLlmTest(session))
             "/api/ha/devices" -> json(handleHaDevices(session))
             "/api/ha/test" -> json(handleHaTest(session))
+            "/api/media/search" -> json(handleMediaSearch(param(session, "q")))
+            "/api/media/play" -> { handleMediaPlay(session); json("""{"ok":true}""") }
+            "/api/media/pause" -> { mediaPlayer.pause(); json("""{"ok":true}""") }
+            "/api/media/resume" -> { mediaPlayer.resume(); json("""{"ok":true}""") }
+            "/api/media/seek" -> {
+                param(session, "position_ms").toLongOrNull()?.let { mediaPlayer.seekTo(it) }
+                json("""{"ok":true}""")
+            }
+            "/api/media/state" -> json(buildMediaState())
             else -> newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "404")
         }
     } catch (e: Exception) {
@@ -145,6 +155,7 @@ class ControlServer @Inject constructor(
             "llm_transport" -> Settings.llmTransport = v
             "wake_engine" -> Settings.wakeEngine = v
             "ota_url" -> Settings.otaUrl = v
+            "pytube_base_url" -> Settings.pytubeBaseUrl = v
             "ha_url" -> Settings.haUrl = v
             "ha_token" -> Settings.haToken = v
             "ha_devices" -> Settings.haDevices = v
@@ -217,6 +228,7 @@ class ControlServer @Inject constructor(
         o.put("llm_transport", Settings.llmTransport)
         o.put("wake_engine", Settings.wakeEngine)
         o.put("ota_url", Settings.otaUrl)
+        o.put("pytube_base_url", Settings.pytubeBaseUrl)
         o.put("ws_url", Settings.wsUrl)
         // TTS host derived from the configured WS host (de-hardcode); empty until a server is set.
         o.put("tts_host", ttsHostFromWs(Settings.wsUrl))
@@ -383,6 +395,93 @@ class ControlServer @Inject constructor(
         } catch (e: Exception) {
             """{"ok":false,"error":${JSONObject.quote(e.message ?: "error")}}"""
         }
+    }
+
+    // ── Media Player ──────────────────────────────────────────────────────
+    // Proxies to pytube_api (search/download-on-demand); playback itself is delegated to
+    // MediaPlayerController. Follows the same OkHttp-proxy pattern as handleLlmModels/handleHaDevices.
+
+    /** GET {pytube_base_url}/v3/search?q=&limit= → reshaped as {"ok":true,"results":[...]}. */
+    private fun handleMediaSearch(query: String): String {
+        val base = Settings.pytubeBaseUrl.trimEnd('/')
+        if (base.isBlank()) return """{"ok":false,"error":"pytube base URL not configured (Setup tab)"}"""
+        if (query.isBlank()) return """{"ok":true,"results":[]}"""
+        return try {
+            val url = "$base/v3/search?q=${java.net.URLEncoder.encode(query, "UTF-8")}&limit=15"
+            val req = Request.Builder().url(url).get().build()
+            val body = http.newCall(req).execute().use { it.body?.string().orEmpty() }
+            val results = info.dourok.voicebot.media.parseSearchResults(body)
+            val arr = JSONArray()
+            results.forEach {
+                arr.put(
+                    JSONObject()
+                        .put("video_id", it.videoId).put("title", it.title)
+                        .put("artist", it.artist).put("duration", it.duration)
+                        .put("thumbnail", it.thumbnailUrl)
+                )
+            }
+            """{"ok":true,"results":$arr}"""
+        } catch (e: Exception) {
+            """{"ok":false,"error":${JSONObject.quote(e.message ?: "network error")}}"""
+        }
+    }
+
+    /**
+     * Ensures [video_id] is downloaded/cached via pytube_api's /v3/video/<id> (which blocks
+     * synchronously on the download, potentially many seconds for a long song), then starts
+     * playback. Runs on a background thread so the HTTP response to /api/media/play returns
+     * immediately — the client discovers download/playback progress by polling /api/media/state,
+     * not by waiting on this request.
+     */
+    private fun handleMediaPlay(session: IHTTPSession) {
+        val videoId = param(session, "video_id")
+        if (videoId.isBlank()) return
+        val title = param(session, "title")
+        val artist = param(session, "artist")
+        val thumbnail = param(session, "thumbnail")
+        mediaPlayer.markDownloading(videoId, title, artist, thumbnail)
+        Thread {
+            val base = Settings.pytubeBaseUrl.trimEnd('/')
+            if (base.isBlank()) {
+                mediaPlayer.markError(videoId, "pytube base URL not configured (Setup tab)")
+                return@Thread
+            }
+            try {
+                val url = "$base/v3/video/$videoId?device=${deviceMac()}"
+                val req = Request.Builder().url(url).get().build()
+                http.newCall(req).execute().use { resp ->
+                    val body = resp.body?.string().orEmpty()
+                    when (val result = info.dourok.voicebot.media.parseVideoResponse(body, resp.code)) {
+                        is info.dourok.voicebot.media.PytubeVideoResult.Ready -> {
+                            val streamUrl = if (result.mp3Path.startsWith("http")) result.mp3Path
+                                else "$base${result.mp3Path}"
+                            mediaPlayer.play(videoId, streamUrl, title, artist, thumbnail)
+                        }
+                        is info.dourok.voicebot.media.PytubeVideoResult.Unavailable ->
+                            mediaPlayer.markError(videoId, result.message)
+                        is info.dourok.voicebot.media.PytubeVideoResult.Error ->
+                            mediaPlayer.markError(videoId, result.message)
+                    }
+                }
+            } catch (e: Exception) {
+                mediaPlayer.markError(videoId, e.message ?: "network error")
+            }
+        }.start()
+    }
+
+    private fun buildMediaState(): String {
+        val s = mediaPlayer.state.value
+        return JSONObject()
+            .put("playing", s.playing)
+            .put("video_id", s.videoId)
+            .put("title", s.title)
+            .put("artist", s.artist)
+            .put("cover_url", s.coverUrl)
+            .put("position_ms", s.positionMs)
+            .put("duration_ms", s.durationMs)
+            .put("download_state", s.downloadState.name.lowercase())
+            .put("error_message", s.errorMessage)
+            .toString()
     }
 
     /** GET {ha_url}/api/ → HA ping (validates URL + token). */

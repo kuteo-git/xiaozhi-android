@@ -121,6 +121,12 @@ object Settings {
         get() = prefs.getString("wake_engine", "alexa")!!
         set(v) = prefs.edit().putString("wake_engine", v).apply()
 
+    // ── Media Player (Setup tab) ─────────────────────────────────────────────
+    /** Base URL of the pytube_api search/download service, e.g. "http://192.168.1.20:114". */
+    var pytubeBaseUrl: String
+        get() = prefs.getString("pytube_base_url", "")!!
+        set(v) = prefs.edit().putString("pytube_base_url", v).apply()
+
     // ── Home Assistant (Setup tab) ──────────────────────────────────────────
     var haUrl: String
         get() = prefs.getString("ha_url", "")!!
