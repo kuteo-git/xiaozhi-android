@@ -240,7 +240,13 @@ class VoiceAssistant @Inject constructor(
                 }
                 "stop" -> scope.launch {
                     Log.i(TAG, "tts stop: state=${state.value} t=${System.currentTimeMillis()}")
-                    if (state.value == VoiceState.SPEAKING) {
+                    // Pausing from the control panel flushes the device's audio with a tts-stop,
+                    // which is NOT the end of a spoken reply: re-opening the mic there would leave
+                    // the robot listening (and liable to false-wake, or to time the session out)
+                    // for as long as the music stays paused.
+                    if (MediaSessionState.nowPlaying.value.state == MediaPlaybackState.PAUSED) {
+                        Log.i(TAG, "tts stop ignored: media paused, not the end of a reply")
+                    } else if (state.value == VoiceState.SPEAKING) {
                         playback.awaitCompletion()
                         if (++autoTurns > MAX_AUTO_TURNS) {
                             // Many replies with no real user speech in between (STT resets this) ->

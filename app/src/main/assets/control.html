@@ -266,7 +266,10 @@ select:focus{border-color:rgba(232,69,60,.45);}
 .np-info{flex:1;min-width:0;}
 .np-title{font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .np-artist{font-size:10.5px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.np-info input[type=range]{width:100%;margin-top:3px;height:3px;}
+.np-seek-row{display:flex;align-items:center;gap:6px;margin-top:3px;}
+.np-time{font-size:10px;color:var(--mut);font-variant-numeric:tabular-nums;flex-shrink:0;min-width:30px;}
+.np-time:last-child{text-align:right;}
+.np-info input[type=range]{flex:1;min-width:0;height:3px;}
 .np-ctrl{display:flex;align-items:center;gap:2px;flex-shrink:0;}
 .np-ctrl button{border:0;background:none;color:var(--fg);font-size:19px;padding:5px 6px;cursor:pointer;}
 .np-ctrl button:disabled{opacity:.3;}
@@ -454,10 +457,13 @@ select:focus{border-color:rgba(232,69,60,.45);}
     <div class="np-info">
       <div class="np-title" id="npTitle"></div>
       <div class="np-artist" id="npArtist"></div>
-      <input type="range" id="npSeek" min="0" max="0" value="0">
+      <div class="np-seek-row">
+        <span class="np-time" id="npCur">0:00</span>
+        <input type="range" id="npSeek" min="0" max="0" value="0">
+        <span class="np-time" id="npDur">0:00</span>
+      </div>
     </div>
     <div class="np-ctrl">
-      <button id="npPrev">⏮</button>
       <button id="npPlay" onclick="mediaToggle()">▶</button>
       <button id="npNext" onclick="mediaNext()">⏭</button>
     </div>
@@ -483,6 +489,7 @@ const $=id=>document.getElementById(id);
 const set=(k,v)=>fetch(`/api/set?key=${k}&value=${encodeURIComponent(v)}`,{method:'POST'});
 function restart(){if(confirm('Restart app?'))fetch('/api/restart',{method:'POST'});}
 function tab(t){['set','setup','media'].forEach(x=>{$('p'+x).classList.toggle('on',x===t);$('t'+x).classList.toggle('on',x===t);});
+  try{localStorage.setItem('r1-tab',t);}catch(e){}
   if(t==='media')mediaPollStart();else mediaPollStop();}
 function openChat(){$('chatDrawer').classList.add('open');$('chatBackdrop').classList.add('open');document.body.classList.add('chat-open');setTimeout(()=>{const i=$('msg');if(i)i.focus();},60);}
 function closeChat(){$('chatDrawer').classList.remove('open');$('chatBackdrop').classList.remove('open');document.body.classList.remove('chat-open');}
@@ -860,11 +867,14 @@ function renderNowPlaying(s){
   if(!npSeekDragging){
     $('npSeek').max=s.duration_s||0;
     $('npSeek').value=s.position_s||0;
+    $('npCur').textContent=fmtClock(s.position_s);
   }
-  $('npPrev').disabled=true;  // no "previous" concept server-side (only forward/related-song queue)
+  $('npDur').textContent=fmtClock(s.duration_s);
   $('npNext').disabled=!sessionActive;
 }
+function fmtClock(sec){sec=Math.max(0,Math.round(sec||0));return Math.floor(sec/60)+':'+String(sec%60).padStart(2,'0');}
 $('npSeek').addEventListener('pointerdown',()=>npSeekDragging=true);
+$('npSeek').addEventListener('input',e=>{$('npCur').textContent=fmtClock(e.target.value);});
 $('npSeek').addEventListener('change',e=>{
   npSeekDragging=false;
   fetch('/api/media/seek?position_s='+Math.round(e.target.value),{method:'POST'});
@@ -875,6 +885,14 @@ async function mediaPollTick(){
   try{renderNowPlaying(await(await fetch('/api/media/state')).json());}catch(e){}
 }
 restoreMediaSearchState();
+// Reopen whichever tab was last used -- reloading the panel (which the browser does aggressively
+// after a UI change) shouldn't dump you back on Settings every time.
+(function restoreTab(){
+  try{
+    const t=localStorage.getItem('r1-tab');
+    if(t&&['set','setup','media'].includes(t))tab(t);
+  }catch(e){}
+})();
 
 poll();setInterval(poll,1500);
 // loadVoices() now runs from render() once tts_host arrives (de-hardcoded server host).
