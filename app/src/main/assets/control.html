@@ -256,7 +256,12 @@ select:focus{border-color:rgba(232,69,60,.45);}
 .media-head{flex-shrink:0;}
 .media-scroll{flex:1;overflow-y:auto;min-height:0;padding:0 13px var(--fab-clear);}
 .media-search{position:relative;display:flex;align-items:center;padding:10px 13px;}
-.media-search input{flex:1;padding-left:32px;}
+.media-search input{flex:1;padding-left:32px;padding-right:32px;}
+.ms-clear{position:absolute;right:18px;border:0;background:none;color:var(--mut);cursor:pointer;
+  padding:5px;border-radius:50%;display:grid;place-items:center;}
+.ms-clear svg{width:13px;height:13px;display:block;}
+.ms-clear[hidden]{display:none;}
+.ms-clear:active{background:var(--grad-dim);color:var(--a1);}
 .ms-icon{position:absolute;left:22px;width:15px;height:15px;color:var(--mut);pointer-events:none;}
 .ms-spin{position:absolute;right:22px;width:15px;height:15px;color:var(--a1);pointer-events:none;
   animation:li-spin 0.9s linear infinite;}
@@ -498,6 +503,7 @@ select:focus{border-color:rgba(232,69,60,.45);}
     <div class="media-search">
       <svg class="ms-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>
       <input class="codein" id="mediaSearch" placeholder="Tìm bài hát…" oninput="onMediaSearchInput()">
+      <button class="ms-clear" id="mediaClear" onclick="clearMediaSearch()" aria-label="Xoá tìm kiếm" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       <svg class="ms-spin" id="mediaSpin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" hidden><circle cx="12" cy="12" r="9" stroke-dasharray="14 42"/></svg>
     </div>
   </div>
@@ -522,6 +528,19 @@ select:focus{border-color:rgba(232,69,60,.45);}
 
 <script>
 const $=id=>document.getElementById(id);
+// Haptics: phones only. Gated on a coarse pointer AND on the event being a real touch, so a mouse
+// on desktop never buzzes; navigator.vibrate is absent on iOS, hence the capability check too.
+const CAN_VIBRATE=!!navigator.vibrate&&matchMedia('(pointer: coarse)').matches;
+function haptic(ms){ if(CAN_VIBRATE){ try{navigator.vibrate(ms);}catch(e){} } }
+document.addEventListener('pointerdown',e=>{
+  if(e.pointerType!=='touch')return;
+  if(e.target.closest('button,.sw,select,input[type=range]'))haptic(12);
+},{passive:true});
+// Sliders also tick when the value is committed (drag released), so a drag has a start and an end
+// rather than buzzing continuously through every step.
+document.addEventListener('change',e=>{
+  if(e.target&&e.target.type==='range')haptic(10);
+},true);
 // Inline vector icons: emoji render differently per platform (and looked wrong on phones).
 const SVG_MOON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z"/></svg>';
 const SVG_SUN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.4M12 19.6V22M2 12h2.4M19.6 12H22M5 5l1.7 1.7M17.3 17.3L19 19M19 5l-1.7 1.7M6.7 17.3L5 19"/></svg>';
@@ -778,6 +797,8 @@ let mediaState={state:'idle',video_id:null,download_percent:-1};
 let mediaPollTimer=null;
 let lastDisplayedSig='';
 let npSeekDragging=false;   // don't let the 1s poll yank the knob out from under a drag
+// Each keystroke would otherwise fire a YouTube-backed lookup; wait until typing settles.
+const SEARCH_DEBOUNCE_MS=750;
 
 // Persist the last search (query + results) across page reloads -- searching is a network call,
 // losing it on every refresh is annoying and pointless since the results themselves don't change
@@ -795,6 +816,7 @@ function restoreMediaSearchState(){
     mediaResultsCache=mediaSearchResultsCache;
     lastDisplayedSig=JSON.stringify(mediaResultsCache);
     renderMediaResults();
+    setSearching(false);   // reveals the clear button when a saved query was restored
   }catch(e){}
 }
 
@@ -803,10 +825,19 @@ function onMediaSearchInput(){
   const q=$('mediaSearch').value.trim();
   // Show the spinner during the debounce too, so typing feels responsive instead of dead for 400ms.
   setSearching(!!q);
-  mediaSearchTimer=setTimeout(()=>mediaSearch(q),400);
+  mediaSearchTimer=setTimeout(()=>mediaSearch(q),SEARCH_DEBOUNCE_MS);
+}
+function clearMediaSearch(){
+  clearTimeout(mediaSearchTimer);
+  $('mediaSearch').value='';
+  mediaSearch('');                 // drops the results and falls back to the live queue
+  $('mediaSearch').focus();
 }
 function setSearching(on){
   $('mediaSpin').hidden=!on;
+  // spinner and clear share the same corner: spinner while a lookup is in flight, otherwise the
+  // clear button whenever there is text to clear.
+  $('mediaClear').hidden=on||!$('mediaSearch').value;
   if(on&&!mediaResultsCache.length){
     $('mediaResults').innerHTML=`<div class="media-empty">${SVG_NOTE}<span>Đang tìm…</span></div>`;
   }
