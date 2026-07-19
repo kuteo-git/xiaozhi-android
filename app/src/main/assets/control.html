@@ -16,6 +16,8 @@
   --grad-dim:rgba(232,69,60,.12);
   --ok:#22c55e;--err:#ef4444;
   --body-bg:var(--bg);
+  /* Clearance for the floating Chat button so the last row can always scroll above it. */
+  --fab-clear:80px;
 }
 /* ── LIGHT ──────────────────────────────────────── */
 [data-theme=light]{
@@ -117,8 +119,12 @@ body.chat-open #chatFab{opacity:0;pointer-events:none;}
   border-radius:7px;line-height:1;}
 .chat-close:active{background:var(--grad-dim);}
 
+@supports (padding: env(safe-area-inset-bottom)) {
+  .settings,.media-scroll{padding-bottom:calc(var(--fab-clear) + env(safe-area-inset-bottom));}
+}
+
 /* ── SETTINGS ──────────────────────────────────── */
-.settings{padding:10px 13px 32px;}
+.settings{padding:10px 13px var(--fab-clear);}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
   padding:13px;margin-bottom:9px;transition:background .3s,border-color .3s;}
 .ch{display:flex;align-items:center;gap:9px;margin-bottom:10px;}
@@ -244,7 +250,7 @@ select:focus{border-color:rgba(232,69,60,.45);}
 /* ── MEDIA PLAYER ──────────────────────────────── */
 /* Pane is a column: head (player + search) pinned, list scrolls under it. */
 .media-head{flex-shrink:0;}
-.media-scroll{flex:1;overflow-y:auto;min-height:0;padding:0 13px 24px;}
+.media-scroll{flex:1;overflow-y:auto;min-height:0;padding:0 13px var(--fab-clear);}
 .media-search{position:relative;display:flex;align-items:center;padding:10px 13px;}
 .media-search input{flex:1;padding-left:32px;}
 .ms-icon{position:absolute;left:22px;width:15px;height:15px;color:var(--mut);pointer-events:none;}
