@@ -92,6 +92,12 @@ dependencies {
     // Embedded HTTP server for the on-device control panel (EQ / settings / chat).
     implementation("org.nanohttpd:nanohttpd:2.3.1")
 
+    // Local playback engine for the Media Player tab (independent of the voice pipeline's
+    // TTS-interleaved audio queue). media3-session registers a MediaSession so playback also
+    // surfaces as Android's own quick-settings media card.
+    implementation("androidx.media3:media3-exoplayer:1.4.1")
+    implementation("androidx.media3:media3-session:1.4.1")
+
     // Standard TFLite runtime for the "Mai ơi" wake engine's classifier (no TFLite Micro needed —
     // the trained model runs fine as a standard streaming/stateful TFLite graph).
     implementation("org.tensorflow:tensorflow-lite:2.16.1")
