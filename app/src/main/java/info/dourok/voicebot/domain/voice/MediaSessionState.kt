@@ -40,4 +40,15 @@ object MediaSessionState {
 
     fun updateQueue(items: List<MediaQueueItem>) { _queue.value = items }
     fun updateNowPlaying(np: MediaNowPlaying) { _nowPlaying.value = np }
+
+    /**
+     * Drop everything when the channel to the server closes. This state is only ever pushed BY the
+     * server, so a disconnect (server restart, wifi drop) would otherwise freeze the last snapshot
+     * on screen -- the panel would keep showing a song as "playing" with nothing coming out of the
+     * speaker, which is indistinguishable from a real playback bug.
+     */
+    fun clear() {
+        _queue.value = emptyList()
+        _nowPlaying.value = MediaNowPlaying()
+    }
 }

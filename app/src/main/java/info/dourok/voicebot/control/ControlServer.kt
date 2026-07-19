@@ -482,13 +482,17 @@ class ControlServer @Inject constructor(
             Log.e(TAG, "parseBody for /api/media/play: ${e.message}")
             return """{"ok":false,"error":"could not read body"}"""
         }
-        val items = try {
-            JSONArray(body["postData"].orEmpty())
+        val root = try {
+            JSONObject(body["postData"].orEmpty())
         } catch (e: Exception) {
-            return """{"ok":false,"error":"items must be a JSON array"}"""
+            return """{"ok":false,"error":"body must be {items:[...],start_index:N}"}"""
         }
+        val items = root.optJSONArray("items")
+            ?: return """{"ok":false,"error":"items must be a JSON array"}"""
         if (items.length() == 0) return """{"ok":false,"error":"empty items"}"""
-        MediaCommands.flow.tryEmit(MediaCommands.Command.Play(items.toString()))
+        MediaCommands.flow.tryEmit(
+            MediaCommands.Command.Play(items.toString(), root.optInt("start_index", 0))
+        )
         return """{"ok":true}"""
     }
 

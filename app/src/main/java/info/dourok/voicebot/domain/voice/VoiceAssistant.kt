@@ -6,6 +6,7 @@ import info.dourok.voicebot.data.Settings
 import info.dourok.voicebot.domain.voice.model.ChatMessage
 import info.dourok.voicebot.domain.voice.model.VoiceState
 import info.dourok.voicebot.protocol.AbortReason
+import info.dourok.voicebot.protocol.AudioState
 import info.dourok.voicebot.protocol.ListeningMode
 import info.dourok.voicebot.protocol.Protocol
 import kotlinx.coroutines.CoroutineScope
@@ -117,6 +118,13 @@ class VoiceAssistant @Inject constructor(
             launch { protocol.incomingJsonFlow.collect(::handleServerMessage) }
             launch { TextCommands.flow.collect { onTextCommand(it) } }
             launch { MediaCommands.flow.collect { onMediaCommand(it) } }
+            // Media state is server-pushed only, so a dropped channel would freeze the last
+            // snapshot on the control panel (a song stuck "playing" with silence). Clear it.
+            launch {
+                protocol.audioChannelStateFlow.collect {
+                    if (it == AudioState.CLOSED) MediaSessionState.clear()
+                }
+            }
             launch { state.collect { refreshLed() } }   // LED bám theo trạng thái
             launch { state.collect { Log.i(TAG, "state -> $it isAwake=$isAwake t=${System.currentTimeMillis()}") } }
         }
@@ -313,7 +321,7 @@ class VoiceAssistant @Inject constructor(
             if (!protocol.isAudioChannelOpened()) protocol.openAudioChannel()
             isAwake = true
             autoTurns = 0
-            protocol.sendMediaPlay(cmd.itemsJson)
+            protocol.sendMediaPlay(cmd.itemsJson, cmd.startIndex)
             return
         }
         if (!protocol.isAudioChannelOpened()) {

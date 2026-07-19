@@ -812,19 +812,26 @@ function applyMediaButtonStates(){
     row.classList.toggle('playing',row.dataset.vid===mediaState.video_id&&mediaState.state==='playing');
   });
 }
-// Send the list we're DISPLAYING, starting at the tapped song, so the robot plays exactly what the
-// user sees ("next" walks this list) instead of jumping into YouTube's related-song radio. Related
-// songs still take over once this list runs out, so playback stays endless. Sent in the POST body:
-// a dozen songs with titles + thumbnail URLs is several KB, which a query string would truncate.
-const MEDIA_QUEUE_MAX=20;
+// Send the WHOLE list we're displaying plus the index of the tapped song, so the robot plays
+// exactly what the user sees ("next" walks this list) instead of jumping into YouTube's
+// related-song radio -- while the songs ABOVE the tapped one stay on screen rather than being
+// trimmed away. Related songs still take over once the list runs out, so playback stays endless.
+// Sent in the POST body: a dozen songs with titles + thumbnail URLs is several KB, which a query
+// string would silently truncate.
+const MEDIA_QUEUE_MAX=30;
 function mediaPlay(videoId){
   const i=mediaResultsCache.findIndex(x=>x.video_id===videoId);
   if(i<0)return;
-  const items=mediaResultsCache.slice(i,i+MEDIA_QUEUE_MAX).map(r=>({
+  let list=mediaResultsCache,start=i;
+  if(list.length>MEDIA_QUEUE_MAX){  // keep a window that still contains the tapped song
+    const from=Math.min(i,Math.max(0,list.length-MEDIA_QUEUE_MAX));
+    list=list.slice(from,from+MEDIA_QUEUE_MAX);start=i-from;
+  }
+  const items=list.map(r=>({
     video_id:r.video_id,title:r.title||'',artist:r.artist||'',
     thumbnail:r.thumbnail||'',duration:r.duration||''
   }));
-  fetch('/api/media/play',{method:'POST',body:JSON.stringify(items)});
+  fetch('/api/media/play',{method:'POST',body:JSON.stringify({items:items,start_index:start})});
 }
 function mediaToggle(){fetch(mediaState.state==='playing'?'/api/media/pause':'/api/media/resume',{method:'POST'});}
 function mediaNext(){fetch('/api/media/next',{method:'POST'});}
