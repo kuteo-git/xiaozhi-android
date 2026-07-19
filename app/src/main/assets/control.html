@@ -64,6 +64,15 @@ body{background:var(--body-bg);color:var(--fg);
 .thm-btn{border:0;background:none;cursor:pointer;font-size:16px;padding:4px;
   border-radius:7px;line-height:1;transition:background .15s;}
 .thm-btn:hover{background:var(--grad-dim);}
+.thm-btn svg{width:16px;height:16px;display:block;}
+.logo svg{width:18px;height:18px;}
+.chat-head .logo svg{width:15px;height:15px;}
+.tbtn svg{width:14px;height:14px;display:block;margin:0 auto;}
+.chat-close svg{width:15px;height:15px;display:block;}
+.inbar button svg{width:16px;height:16px;}
+/* icon sitting next to a text label inside a button */
+.btn-ico{display:inline-flex;vertical-align:-2px;margin-right:6px;}
+.btn-ico svg{width:14px;height:14px;}
 /* status */
 .status{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--mut);}
 .status-dot{width:7px;height:7px;border-radius:50%;background:var(--ok);
@@ -295,13 +304,13 @@ select:focus{border-color:rgba(232,69,60,.45);}
 <div class="app">
 
 <div class="head">
-  <div class="logo">🤖</div>
+  <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4.5"/><circle cx="12" cy="3.5" r="1.2"/><path d="M9 13v1.5M15 13v1.5"/></svg></div>
   <div class="head-text">
     <h1>R1 Control</h1>
     <div class="sub">PHICOMM R1 · Alexa</div>
   </div>
   <div class="head-right">
-    <button class="thm-btn" id="thmBtn" onclick="toggleTheme()" title="Đổi theme">🌙</button>
+    <button class="thm-btn" id="thmBtn" onclick="toggleTheme()" title="Đổi theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z"/></svg></button>
     <div class="status"><div class="status-dot" id="sti"></div><span id="st">online</span></div>
   </div>
 </div>
@@ -352,19 +361,19 @@ select:focus{border-color:rgba(232,69,60,.45);}
     <div class="card">
       <div class="ch"><span class="icon-badge ib-mic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="7.5" y="2" width="5" height="9" rx="2.5" fill="currentColor" stroke="none"/><path d="M4.5 9.5a5.5 5.5 0 0011 0"/><line x1="10" y1="15" x2="10" y2="18"/><line x1="7" y1="18" x2="13" y2="18"/></svg></span><h2>Kiểm tra mic</h2></div>
       <div class="row" style="gap:10px;margin:0">
-        <button class="btn rec" id="recRaw" style="flex:1;width:auto" onclick="toggleRec(false)">● Mic thô</button>
-        <button class="btn rec" id="recAgc" style="flex:1;width:auto" onclick="toggleRec(true)">● Mic + AGC</button>
+        <button class="btn rec" id="recRaw" style="flex:1;width:auto" onclick="toggleRec(false)"><span class="btn-ico"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="6"/></svg></span>Mic thô</button>
+        <button class="btn rec" id="recAgc" style="flex:1;width:auto" onclick="toggleRec(true)"><span class="btn-ico"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="6"/></svg></span>Mic + AGC</button>
       </div>
       <audio id="recAudio" controls style="width:100%;margin-top:12px;height:36px" hidden></audio>
       <div class="hint" id="recHint" style="margin-top:8px">Bấm để ghi âm trực tiếp từ loa R1 rồi nghe lại. <b>Mic thô</b> — âm thanh gốc chưa xử lý. <b>Mic + AGC</b> — đã áp dụng khuếch đại theo slider bên trên. Tối đa 30 giây, 16 kHz.</div>
     </div>
     <div class="card">
       <div class="ch"><span class="icon-badge ib-led"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2a5 5 0 00-3 9c.6.5 1 1.2 1 2h4c0-.8.4-1.5 1-2a5 5 0 00-3-9z"/><line x1="8.3" y1="16" x2="11.7" y2="16"/><line x1="8.6" y1="18" x2="11.4" y2="18"/></svg></span><h2>Đèn LED</h2></div>
-      <div class="row"><label class="wide"><span class="icon-mini ib-wake"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="4" cy="16" r="1.3" fill="currentColor" stroke="none"/><path d="M7 13a6 6 0 018 0"/><path d="M9.3 15.3a3 3 0 014 0"/></svg></span>Đang nghe</label><input class="codein" id="ledL" onchange="set('led_listening',this.value)"><button class="tbtn" onclick="testLed('led_listening','ledL','listening')">▶</button></div>
-      <div class="row"><label class="wide"><span class="icon-mini ib-voice"><svg viewBox="0 0 20 20" fill="currentColor"><rect x="2" y="7" width="2.2" height="6" rx="1.1"/><rect x="6.3" y="4" width="2.2" height="12" rx="1.1"/><rect x="10.6" y="1" width="2.2" height="18" rx="1.1"/><rect x="14.9" y="4" width="2.2" height="12" rx="1.1"/></svg></span>Đang trả lời</label><input class="codein" id="ledS" onchange="set('led_speaking',this.value)"><button class="tbtn" onclick="testLed('led_speaking','ledS','speaking')">▶</button></div>
-      <div class="row"><label class="wide"><span class="icon-mini ib-eq"><svg viewBox="0 0 20 20" fill="currentColor"><circle cx="5" cy="15" r="2.2"/><rect x="6.8" y="3" width="1.4" height="12" rx="0.7"/><path d="M8.2 3c2 .2 3.3 1.4 3.3 3.4" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg></span>Phát nhạc</label><input class="codein" id="ledM" onchange="set('led_music',this.value)"><button class="tbtn" onclick="testLed('led_music','ledM','music')">▶</button></div>
-      <div class="row"><label class="wide"><span class="icon-mini ib-sys"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M14 10.5A5.5 5.5 0 018.8 4 6 6 0 1014 10.5z"/></svg></span>Chờ</label><input class="codein" id="ledI" onchange="set('led_idle',this.value)"><button class="tbtn" onclick="testLed('led_idle','ledI','idle')">▶</button></div>
-      <div class="hint">Mã hiệu ứng đèn cho từng trạng thái. Nhiều mã cách nhau bằng dấu phẩy (vd "505,309,503" = nhịp thở). Nhấn <b>▶</b> để xem ngay trên đèn thật.</div>
+      <div class="row"><label class="wide"><span class="icon-mini ib-wake"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="4" cy="16" r="1.3" fill="currentColor" stroke="none"/><path d="M7 13a6 6 0 018 0"/><path d="M9.3 15.3a3 3 0 014 0"/></svg></span>Đang nghe</label><input class="codein" id="ledL" onchange="set('led_listening',this.value)"><button class="tbtn" onclick="testLed('led_listening','ledL','listening')"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg></button></div>
+      <div class="row"><label class="wide"><span class="icon-mini ib-voice"><svg viewBox="0 0 20 20" fill="currentColor"><rect x="2" y="7" width="2.2" height="6" rx="1.1"/><rect x="6.3" y="4" width="2.2" height="12" rx="1.1"/><rect x="10.6" y="1" width="2.2" height="18" rx="1.1"/><rect x="14.9" y="4" width="2.2" height="12" rx="1.1"/></svg></span>Đang trả lời</label><input class="codein" id="ledS" onchange="set('led_speaking',this.value)"><button class="tbtn" onclick="testLed('led_speaking','ledS','speaking')"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg></button></div>
+      <div class="row"><label class="wide"><span class="icon-mini ib-eq"><svg viewBox="0 0 20 20" fill="currentColor"><circle cx="5" cy="15" r="2.2"/><rect x="6.8" y="3" width="1.4" height="12" rx="0.7"/><path d="M8.2 3c2 .2 3.3 1.4 3.3 3.4" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg></span>Phát nhạc</label><input class="codein" id="ledM" onchange="set('led_music',this.value)"><button class="tbtn" onclick="testLed('led_music','ledM','music')"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg></button></div>
+      <div class="row"><label class="wide"><span class="icon-mini ib-sys"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M14 10.5A5.5 5.5 0 018.8 4 6 6 0 1014 10.5z"/></svg></span>Chờ</label><input class="codein" id="ledI" onchange="set('led_idle',this.value)"><button class="tbtn" onclick="testLed('led_idle','ledI','idle')"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg></button></div>
+      <div class="hint">Mã hiệu ứng đèn cho từng trạng thái. Nhiều mã cách nhau bằng dấu phẩy (vd "505,309,503" = nhịp thở). Nhấn <span class="btn-ico" style="margin:0"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg></span> để xem ngay trên đèn thật.</div>
     </div>
     <div class="card">
       <div class="ch"><span class="icon-badge ib-sys"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="10" cy="10" r="3"/><circle cx="10" cy="10" r="1" fill="currentColor" stroke="none"/><line x1="10" y1="2" x2="10" y2="4.2"/><line x1="10" y1="15.8" x2="10" y2="18"/><line x1="2" y1="10" x2="4.2" y2="10"/><line x1="15.8" y1="10" x2="18" y2="10"/><line x1="4.6" y1="4.6" x2="6.1" y2="6.1"/><line x1="13.9" y1="13.9" x2="15.4" y2="15.4"/><line x1="15.4" y1="4.6" x2="13.9" y2="6.1"/><line x1="6.1" y1="13.9" x2="4.6" y2="15.4"/></svg></span><h2>Hệ thống</h2></div>
@@ -397,9 +406,9 @@ select:focus{border-color:rgba(232,69,60,.45);}
       <div class="ch"><span class="icon-badge ib-ai"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a4 4 0 00-4 4v1a3 3 0 000 6v1a4 4 0 008 0v-1a3 3 0 000-6V6a4 4 0 00-4-4z"/></svg></span><h2>AI Model</h2></div>
       <div class="row"><label>Provider</label><select id="prov" onchange="onProv()"><option value="custom">Custom</option><option value="openai">OpenAI</option><option value="openrouter">OpenRouter</option><option value="moonshot">Moonshot</option><option value="gemini">Gemini</option><option value="omniroute">OmniRoute</option></select></div>
       <div class="row"><label>Base URL</label><input class="codein" id="burl" placeholder="https://.../v1"></div>
-      <div class="row"><label>API Key</label><input class="codein" id="akey" type="password" placeholder="sk-…"><button class="tbtn" onclick="togKey()">👁</button></div>
+      <div class="row"><label>API Key</label><input class="codein" id="akey" type="password" placeholder="sk-…"><button class="tbtn" onclick="togKey()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.6"/></svg></button></div>
       <div class="row" id="rowTrans" hidden><label>Transport</label><select id="ltrans"><option>openai</option><option>anthropic</option></select></div>
-      <div class="row"><label>Model</label><button class="tbtn" onclick="fetchModels()">⟳</button><select id="lmodel" style="flex:1"><option value="">(fetch or type)</option></select><button class="tbtn" onclick="togModelInput()">✎</button></div>
+      <div class="row"><label>Model</label><button class="tbtn" onclick="fetchModels()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 11-2.3-5.6"/><path d="M20 3.5V9h-5.5"/></svg></button><select id="lmodel" style="flex:1"><option value="">(fetch or type)</option></select><button class="tbtn" onclick="togModelInput()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19.5 8.5a2.1 2.1 0 10-3-3L5 17v3z"/></svg></button></div>
       <input class="codein" id="lmodelText" placeholder="model name" hidden style="margin-top:6px">
       <div class="row" style="gap:8px;margin-top:4px"><button class="btn rec" style="flex:1;width:auto" onclick="testLlm()">Test</button><button class="btn rec" style="flex:1;width:auto" onclick="saveLlm()">Save</button></div>
       <div class="hint" id="llmStat">Áp dụng từ lần wake kế tiếp.</div>
@@ -408,9 +417,9 @@ select:focus{border-color:rgba(232,69,60,.45);}
     <div class="card">
       <div class="ch"><span class="icon-badge ib-srv"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 2 2 8v10h6v-6h4v6h6V8z"/></svg></span><h2>Home Assistant</h2></div>
       <div class="row"><label>HA URL</label><input class="codein" id="haUrl" placeholder="http://homeassistant.local:8123"></div>
-      <div class="row"><label>Token</label><input class="codein" id="haTok" type="password" placeholder="long-lived token"><button class="tbtn" onclick="togHaKey()">👁</button></div>
-      <div class="row" style="gap:8px"><button class="btn rec" style="flex:1;width:auto" onclick="fetchHaDevices()">Fetch devices ⟳</button><button class="btn rec" style="flex:1;width:auto" onclick="testHa()">Test</button></div>
-      <div class="row" style="margin:8px 0 0"><input class="codein" id="haSearch" placeholder="🔍 tên hoặc entity_id" oninput="renderHaPick()"></div>
+      <div class="row"><label>Token</label><input class="codein" id="haTok" type="password" placeholder="long-lived token"><button class="tbtn" onclick="togHaKey()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.6"/></svg></button></div>
+      <div class="row" style="gap:8px"><button class="btn rec" style="flex:1;width:auto" onclick="fetchHaDevices()">Fetch devices<span class="btn-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 11-2.3-5.6"/><path d="M20 3.5V9h-5.5"/></svg></span></button><button class="btn rec" style="flex:1;width:auto" onclick="testHa()">Test</button></div>
+      <div class="media-search" style="padding:0;margin:8px 0 0"><svg class="ms-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg><input class="codein" id="haSearch" placeholder="tên hoặc entity_id" oninput="renderHaPick()"></div>
       <div class="segsel" id="haDomains" style="flex:1;margin-top:6px;flex-wrap:wrap"></div>
       <div id="haPick" style="max-height:220px;overflow:auto;margin-top:8px"></div>
       <div class="row" style="margin-top:6px"><button class="btn rec" style="flex:1;width:auto" onclick="saveHa()">Save</button></div>
@@ -453,7 +462,7 @@ select:focus{border-color:rgba(232,69,60,.45);}
 
     <div class="card">
       <div class="ch"><span class="icon-badge ib-sys"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16 6a7 7 0 10.8 6"/><path d="M16 2.5v4h-4"/></svg></span><h2>Ứng dụng</h2></div>
-      <button class="btn warn" onclick="restart()">↻ Restart app</button>
+      <button class="btn warn" onclick="restart()"><span class="btn-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 11-2.3-5.6"/><path d="M20 3.5V9h-5.5"/></svg></span>Restart app</button>
       <div class="hint" style="margin-top:8px">Khởi động lại app để áp dụng các thay đổi cần restart (engine, nguồn mic, sample rate).</div>
     </div>
   </div>
@@ -495,16 +504,23 @@ select:focus{border-color:rgba(232,69,60,.45);}
 <button id="chatFab" onclick="toggleChat()"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M3 5a2 2 0 012-2h10a2 2 0 012 2v6a2 2 0 01-2 2H9l-4 3v-3H5a2 2 0 01-2-2V5z"/></svg>Chat</button>
 <div id="chatBackdrop" onclick="closeChat()"></div>
 <div id="chatDrawer">
-  <div class="chat-head"><div class="logo">🤖</div><h3>Chat với robot</h3><button class="chat-close" onclick="closeChat()">✕</button></div>
+  <div class="chat-head"><div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4.5"/><circle cx="12" cy="3.5" r="1.2"/><path d="M9 13v1.5M15 13v1.5"/></svg></div><h3>Chat với robot</h3><button class="chat-close" onclick="closeChat()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
   <div id="chat"><div class="empty">Chưa có tin nhắn.<br>Nhắn cho robot bên dưới 👇</div></div>
   <div class="inbar">
     <input id="msg" placeholder="Nhắn cho robot…" onkeydown="if(event.key==='Enter')send()">
-    <button onclick="send()">➤</button>
+    <button onclick="send()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3.2 20.5L21 12 3.2 3.5 3 10l12 2-12 2z"/></svg></button>
   </div>
 </div>
 
 <script>
 const $=id=>document.getElementById(id);
+// Inline vector icons: emoji render differently per platform (and looked wrong on phones).
+const SVG_MOON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z"/></svg>';
+const SVG_SUN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.4M12 19.6V22M2 12h2.4M19.6 12H22M5 5l1.7 1.7M17.3 17.3L19 19M19 5l-1.7 1.7M6.7 17.3L5 19"/></svg>';
+const SVG_DOT='<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="6"/></svg>';
+const SVG_STOP='<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6.5" y="6.5" width="11" height="11" rx="2"/></svg>';
+const SVG_PLAY_SM='<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>';
+const ICO=svg=>'<span class="btn-ico">'+svg+'</span>';
 const set=(k,v)=>fetch(`/api/set?key=${k}&value=${encodeURIComponent(v)}`,{method:'POST'});
 function restart(){if(confirm('Restart app?'))fetch('/api/restart',{method:'POST'});}
 function tab(t){['set','setup','media'].forEach(x=>{$('p'+x).classList.toggle('on',x===t);$('t'+x).classList.toggle('on',x===t);});
@@ -522,12 +538,12 @@ function testLed(key,id,state){fetch(`/api/set?key=${key}&value=${encodeURICompo
 function toggleTheme(){
   const next=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';
   document.documentElement.setAttribute('data-theme',next);
-  $('thmBtn').textContent=next==='dark'?'🌙':'☀️';
+  $('thmBtn').innerHTML=next==='dark'?SVG_MOON:SVG_SUN;
   try{localStorage.setItem('r1-theme',next);}catch(e){}
 }
 (function initTheme(){
   const t=document.documentElement.getAttribute('data-theme')||'dark';
-  $('thmBtn').textContent=t==='dark'?'🌙':'☀️';
+  $('thmBtn').innerHTML=t==='dark'?SVG_MOON:SVG_SUN;
 })();
 
 // ── TTS voices ───────────────────────────────────
@@ -615,7 +631,7 @@ $('eqon').onchange=e=>set('eq_enabled',e.target.checked);
 // ── Test mic A/B ─────────────────────────────────
 let recTimer=null,recSecs=0,recActive=null;
 function recReset(){recActive=null;
-  $('recRaw').textContent='● Thô';$('recAgc').textContent='● + AGC';
+  $('recRaw').innerHTML=ICO(SVG_DOT)+'Thô';$('recAgc').innerHTML=ICO(SVG_DOT)+'+ AGC';
   ['recRaw','recAgc'].forEach(id=>{const b=$(id);b.disabled=false;b.style.cssText='flex:1;width:auto';});
 }
 function toggleRec(agc){
@@ -626,15 +642,15 @@ function toggleRec(agc){
     $(off).disabled=true;
     const b=$(on);
     b.style.cssText='flex:1;width:auto;background:var(--grad);color:#fff;border-color:transparent;';
-    b.textContent='■ Xong (0s)';
-    recTimer=setInterval(()=>{recSecs++;$(on).textContent='■ Xong ('+recSecs+'s)';if(recSecs>=30)stopRec();},1000);
+    b.innerHTML=ICO(SVG_STOP)+'Xong (0s)';
+    recTimer=setInterval(()=>{recSecs++;$(on).innerHTML=ICO(SVG_STOP)+'Xong ('+recSecs+'s)';if(recSecs>=30)stopRec();},1000);
   }).catch(()=>{$('recHint').textContent='Không gọi được /api/mic/start (cần bản app mới).';});
 }
 function stopRec(){
   clearInterval(recTimer);recTimer=null;const wasAgc=recActive;recReset();
   fetch('/api/mic/stop',{method:'POST'}).then(r=>r.json()).then(j=>{
     if(j.bytes>0){const a=$('recAudio');a.src='/api/mic/rec.wav?t='+Date.now();a.hidden=false;a.play().catch(()=>{});
-      $('recHint').textContent=(wasAgc?'▶ Bản +AGC':'▶ Bản THÔ')+' — nghe rồi ghi bản kia để so.';}
+      $('recHint').innerHTML=ICO(SVG_PLAY_SM)+(wasAgc?'Bản +AGC':'Bản THÔ')+' — nghe rồi ghi bản kia để so.';}
     else $('recHint').textContent='Không thu được gì (vừa bấm quá nhanh?). Thử lại.';
   });
 }
@@ -666,7 +682,7 @@ async function fetchModels(){$('llmStat').textContent='Đang tải models…';
     $('llmStat').textContent=j.models.length+' models';logSetup('models: '+j.models.length+' loaded');}
   catch(e){$('llmStat').textContent='Lỗi fetch models';logSetup('models ✗ '+e);}}
 async function testLlm(){
-  if(!curModel()){$('llmStat').textContent='✗ Chọn/nhập model trước (bấm ⟳ hoặc ✎).';return;}
+  if(!curModel()){$('llmStat').textContent='✗ Chọn/nhập model trước (bấm nút tải lại hoặc sửa).';return;}
   $('llmStat').textContent='Testing…';
   try{const j=await(await fetch('/api/llm/test?'+llmParams(),{method:'POST'})).json();
     $('llmStat').textContent=j.ok?`✓ ${j.latency_ms}ms · ${j.model}`:`✗ ${j.error}`;
@@ -740,7 +756,7 @@ async function saveHa(){const lines=haLines();
   for(const k in kv)await fetch(`/api/set?key=${k}&value=${encodeURIComponent(kv[k])}`,{method:'POST'});
   $('haStat').textContent='Đã lưu '+lines.split('\n').filter(Boolean).length+' thiết bị.';logSetup('HA saved '+lines.split('\n').filter(Boolean).length+' devices');renderHaSaved(lines);}
 function renderHaSaved(devs){const lines=(devs||'').split('\n').filter(Boolean);
-  $('haSaved').innerHTML=lines.map((l,i)=>`<div class="row" style="margin:5px 0;gap:6px"><input class="codein" value="${l.replace(/"/g,'&quot;')}" onchange="editHaLine(${i},this.value)"><button class="tbtn" onclick="removeHaLine(${i})">✕</button></div>`).join('')||'<div class="hint">(chưa lưu thiết bị nào)</div>';
+  $('haSaved').innerHTML=lines.map((l,i)=>`<div class="row" style="margin:5px 0;gap:6px"><input class="codein" value="${l.replace(/"/g,'&quot;')}" onchange="editHaLine(${i},this.value)"><button class="tbtn" onclick="removeHaLine(${i})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>`).join('')||'<div class="hint">(chưa lưu thiết bị nào)</div>';
   $('haSaved').dataset.lines=JSON.stringify(lines);}
 function _haLines(){return JSON.parse($('haSaved').dataset.lines||'[]');}
 async function _saveHaLines(lines){await fetch(`/api/set?key=ha_devices&value=${encodeURIComponent(lines.join('\n'))}`,{method:'POST'});renderHaSaved(lines.join('\n'));}
