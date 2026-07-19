@@ -23,3 +23,19 @@
 -dontwarn org.bouncycastle.jsse.**
 -dontwarn org.conscrypt.**
 -dontwarn org.openjsse.**
+
+# ===== Release: strip every android.util.Log call =====
+# Logging here sits on hot paths (per-frame audio state, wake scores, playback ticks), so in release
+# R8 removes the calls outright -- including the string building that would otherwise run only to be
+# thrown away. Crash reporting is NOT affected: VApplication writes stack traces to
+# /sdcard/voicebot-crash.log with real file I/O, not through Log.
+# (Requires the optimizing config, which proguardFiles already uses.)
+-assumenosideeffects class android.util.Log {
+    public static int v(...);
+    public static int d(...);
+    public static int i(...);
+    public static int w(...);
+    public static int e(...);
+    public static int wtf(...);
+    public static boolean isLoggable(...);
+}

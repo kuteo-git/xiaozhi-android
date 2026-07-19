@@ -96,9 +96,12 @@ data/
 
 Requirements: JDK 17, Android SDK (platform 35, build-tools 35), NDK 27, CMake 3.22.1, `minSdk 22`.
 
+**Build release — that is what runs on the device.** The R1 is a slow single-board device; the debug
+build is measurably worse there (no R8 optimisation, and logging left in on the audio hot path).
+
 ```bash
 JAVA_HOME=/path/to/jdk-17 ANDROID_HOME=~/Library/Android/sdk ./gradlew assembleRelease
-# debug build:
+# debug build -- only when you actually need logcat output:
 JAVA_HOME=/path/to/jdk-17 ANDROID_HOME=~/Library/Android/sdk ./gradlew assembleDebug
 ```
 
@@ -106,8 +109,16 @@ The release build uses R8 minification; JNI classes (Opus, snowboy, microWakeWor
 `app/proguard-rules.pro`. Native libraries (Opus, Snowboy JNI) need the NDK, so the first build is
 noticeably slower than incremental ones.
 
-Debug builds use `applicationId` with a `.dev` suffix so they can be installed **side by side** with
-a build that uses the base `applicationId`, without conflicting.
+**Release strips logging.** `proguard-rules.pro` marks every `android.util.Log` call
+(`v/d/i/w/e/wtf`) as side-effect-free, so R8 deletes them along with the string building that fed
+them. Expect an empty logcat from a release build — that is intended, not a broken install. Crash
+reporting still works: `VApplication` writes stack traces to `/sdcard/voicebot-crash.log` with real
+file I/O rather than through `Log`. Build debug when you need to watch logcat.
+
+`applicationId` is `info.dourok.voicebot.dev` for **every** build type, so this app coexists with the
+stock aiboxplus app rather than replacing it. Debug and release therefore share one package and one
+data directory: installing either replaces the other in place (both are signed with the debug key, so
+`pm install -r` works without uninstalling).
 
 ## Installing on the device
 
@@ -116,7 +127,7 @@ a build that uses the base `applicationId`, without conflicting.
 If the device is reachable over USB or a stable network, a normal install works:
 
 ```bash
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb install -r app/build/outputs/apk/release/app-release.apk
 ```
 
 ### R1 over Wi-Fi (no USB) — push + `pm install`
@@ -128,7 +139,7 @@ then install it from a shell:
 
 ```bash
 adb connect <device-ip>:5555
-adb -s <device-ip>:5555 push app/build/outputs/apk/debug/app-debug.apk /data/local/tmp/rc.apk
+adb -s <device-ip>:5555 push app/build/outputs/apk/release/app-release.apk /data/local/tmp/rc.apk
 adb -s <device-ip>:5555 shell pm install -r /data/local/tmp/rc.apk
 adb -s <device-ip>:5555 shell rm -f /data/local/tmp/rc.apk
 ```
