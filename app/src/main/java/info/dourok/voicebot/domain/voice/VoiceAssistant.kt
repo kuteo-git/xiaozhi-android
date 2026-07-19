@@ -288,6 +288,7 @@ class VoiceAssistant @Inject constructor(
                 val playbackState = when (json.optString("state")) {
                     "downloading" -> MediaPlaybackState.DOWNLOADING
                     "playing" -> MediaPlaybackState.PLAYING
+                    "paused" -> MediaPlaybackState.PAUSED
                     else -> MediaPlaybackState.STOPPED
                 }
                 isMusic = playbackState == MediaPlaybackState.DOWNLOADING || playbackState == MediaPlaybackState.PLAYING
@@ -330,6 +331,7 @@ class VoiceAssistant @Inject constructor(
         }
         when (cmd) {
             is MediaCommands.Command.Next -> protocol.sendMediaNext()
+            is MediaCommands.Command.Seek -> protocol.sendMediaSeek(cmd.positionS)
             is MediaCommands.Command.Pause -> protocol.sendMediaPause()
             is MediaCommands.Command.Resume -> protocol.sendMediaResume()
             is MediaCommands.Command.Stop -> protocol.sendMediaStop()

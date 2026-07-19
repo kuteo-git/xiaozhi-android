@@ -454,7 +454,7 @@ select:focus{border-color:rgba(232,69,60,.45);}
     <div class="np-info">
       <div class="np-title" id="npTitle"></div>
       <div class="np-artist" id="npArtist"></div>
-      <input type="range" id="npSeek" min="0" max="0" value="0" disabled>
+      <input type="range" id="npSeek" min="0" max="0" value="0">
     </div>
     <div class="np-ctrl">
       <button id="npPrev">⏮</button>
@@ -728,6 +728,7 @@ let mediaSearchTimer=null;
 let mediaState={state:'idle',video_id:null,download_percent:-1};
 let mediaPollTimer=null;
 let lastDisplayedSig='';
+let npSeekDragging=false;   // don't let the 1s poll yank the knob out from under a drag
 
 // Persist the last search (query + results) across page reloads -- searching is a network call,
 // losing it on every refresh is annoying and pointless since the results themselves don't change
@@ -787,7 +788,7 @@ function renderMediaResults(err){
 // Tapping the currently-playing item's button toggles play/pause in place; tapping any other item
 // (from search results or the live queue) starts it.
 function mediaItemTap(videoId){
-  if(videoId===mediaState.video_id&&(mediaState.state==='playing'||mediaState.state==='downloading'))mediaToggle();
+  if(videoId===mediaState.video_id&&mediaState.state!=='stopped'&&mediaState.state!=='idle')mediaToggle();
   else mediaPlay(videoId);
 }
 const LI_RING_CIRC=2*Math.PI*17;  // matches the r=17 <circle> in the .li-ring SVG markup
@@ -843,7 +844,7 @@ function renderNowPlaying(s){
   // regardless of whether it started from voice or the web). Clear the box to go back to the queue.
   // Only re-render when the list actually changes (not every poll tick) to avoid flicker/scroll-jank;
   // button/ring states still refresh every tick via applyMediaButtonStates.
-  const sessionActive=(s.state==='playing'||s.state==='downloading');
+  const sessionActive=(s.state==='playing'||s.state==='downloading'||s.state==='paused');
   const searching=!!$('mediaSearch').value.trim();
   const list=searching?mediaSearchResultsCache:(sessionActive?(s.queue||[]):mediaSearchResultsCache);
   const sig=JSON.stringify(list);
@@ -856,11 +857,18 @@ function renderNowPlaying(s){
   $('npTitle').textContent=s.title||'';
   $('npArtist').textContent=s.artist||'';
   $('npPlay').textContent=s.state==='playing'?'⏸':'▶';
-  $('npSeek').max=s.duration_s||0;
-  $('npSeek').value=s.position_s||0;
+  if(!npSeekDragging){
+    $('npSeek').max=s.duration_s||0;
+    $('npSeek').value=s.position_s||0;
+  }
   $('npPrev').disabled=true;  // no "previous" concept server-side (only forward/related-song queue)
   $('npNext').disabled=!sessionActive;
 }
+$('npSeek').addEventListener('pointerdown',()=>npSeekDragging=true);
+$('npSeek').addEventListener('change',e=>{
+  npSeekDragging=false;
+  fetch('/api/media/seek?position_s='+Math.round(e.target.value),{method:'POST'});
+});
 function mediaPollStart(){if(mediaPollTimer)return;mediaPollTick();mediaPollTimer=setInterval(mediaPollTick,1000);}
 function mediaPollStop(){clearInterval(mediaPollTimer);mediaPollTimer=null;}
 async function mediaPollTick(){

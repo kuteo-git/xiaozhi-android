@@ -4,7 +4,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-enum class MediaPlaybackState { IDLE, DOWNLOADING, PLAYING, STOPPED }
+enum class MediaPlaybackState { IDLE, DOWNLOADING, PLAYING, PAUSED, STOPPED }
 
 data class MediaQueueItem(
     val videoId: String,

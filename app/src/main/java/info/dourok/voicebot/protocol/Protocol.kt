@@ -101,8 +101,9 @@ abstract class Protocol {
         sendText(json.toString())
     }
 
-    /** Media Player tab (web control panel) commands -- routed through the same play_youtube
-     *  session a voice command would use (see xiaozhi-server's core/handle/mediaHandle.py). */
+    // Media Player tab (web control panel) commands -- routed through the same play_youtube
+    // session a voice command would use (see xiaozhi-server's core/handle/mediaHandle.py).
+
     /** [itemsJson] is a JSON array of {video_id,title,artist,thumbnail,duration}: the WHOLE list the
      *  panel is showing, with [startIndex] marking the tapped song. The server plays from there in
      *  order (so "next" follows the panel, not YouTube's related-song radio) while keeping the full
@@ -123,6 +124,16 @@ abstract class Protocol {
             put("session_id", sessionId)
             put("type", "media")
             put("action", "next")
+        }
+        sendText(json.toString())
+    }
+
+    suspend fun sendMediaSeek(positionS: Int) {
+        val json = JSONObject().apply {
+            put("session_id", sessionId)
+            put("type", "media")
+            put("action", "seek")
+            put("position_s", positionS)
         }
         sendText(json.toString())
     }

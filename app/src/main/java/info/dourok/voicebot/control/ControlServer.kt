@@ -86,6 +86,11 @@ class ControlServer @Inject constructor(
             "/api/ha/test" -> json(handleHaTest(session))
             "/api/media/search" -> json(handleMediaSearch(param(session, "q")))
             "/api/media/play" -> json(handleMediaPlay(session))
+            "/api/media/seek" -> {
+                param(session, "position_s").toIntOrNull()
+                    ?.let { MediaCommands.flow.tryEmit(MediaCommands.Command.Seek(it)) }
+                json("""{"ok":true}""")
+            }
             "/api/media/next" -> { MediaCommands.flow.tryEmit(MediaCommands.Command.Next); json("""{"ok":true}""") }
             "/api/media/pause" -> { MediaCommands.flow.tryEmit(MediaCommands.Command.Pause); json("""{"ok":true}""") }
             "/api/media/resume" -> { MediaCommands.flow.tryEmit(MediaCommands.Command.Resume); json("""{"ok":true}""") }
