@@ -15,9 +15,11 @@ import info.dourok.voicebot.domain.voice.AudioPlayback
 import info.dourok.voicebot.domain.voice.ConversationLog
 import info.dourok.voicebot.domain.voice.LedIndicator
 import info.dourok.voicebot.domain.voice.LedState
-import info.dourok.voicebot.domain.voice.MediaCoordinator
+import info.dourok.voicebot.domain.voice.MediaPlaybackState
+import info.dourok.voicebot.domain.voice.MediaSessionState
 import info.dourok.voicebot.domain.voice.MicTest
 import info.dourok.voicebot.domain.voice.TextCommands
+import info.dourok.voicebot.domain.voice.VoiceAssistant
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -40,7 +42,7 @@ class ControlServer @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val playback: AudioPlayback,
     private val led: LedIndicator,
-    private val mediaPlayer: info.dourok.voicebot.media.MediaPlayerController,
+    private val voiceAssistant: VoiceAssistant,
 ) : NanoHTTPD(PORT) {
 
     fun startServer() {
@@ -84,13 +86,19 @@ class ControlServer @Inject constructor(
             "/api/ha/devices" -> json(handleHaDevices(session))
             "/api/ha/test" -> json(handleHaTest(session))
             "/api/media/search" -> json(handleMediaSearch(param(session, "q")))
-            "/api/media/play" -> { handleMediaPlay(session); json("""{"ok":true}""") }
-            "/api/media/pause" -> { mediaPlayer.pause(); json("""{"ok":true}""") }
-            "/api/media/resume" -> { mediaPlayer.resume(); json("""{"ok":true}""") }
-            "/api/media/seek" -> {
-                param(session, "position_ms").toLongOrNull()?.let { mediaPlayer.seekTo(it) }
+            "/api/media/play" -> {
+                val videoId = param(session, "video_id")
+                if (videoId.isNotBlank()) {
+                    voiceAssistant.sendMediaPlay(
+                        videoId, param(session, "title"), param(session, "artist"), param(session, "thumbnail"),
+                    )
+                }
                 json("""{"ok":true}""")
             }
+            "/api/media/next" -> { voiceAssistant.sendMediaNext(); json("""{"ok":true}""") }
+            "/api/media/pause" -> { voiceAssistant.sendMediaPause(); json("""{"ok":true}""") }
+            "/api/media/resume" -> { voiceAssistant.sendMediaResume(); json("""{"ok":true}""") }
+            "/api/media/stop" -> { voiceAssistant.sendMediaStop(); json("""{"ok":true}""") }
             "/api/media/state" -> json(buildMediaState())
             else -> newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "404")
         }
@@ -428,100 +436,68 @@ class ControlServer @Inject constructor(
     }
 
     /**
-     * Ensures [video_id] is downloaded/cached via pytube_api's /v3/video/<id> (which blocks
-     * synchronously on the download, potentially many seconds for a long song), then starts
-     * playback. Runs on a background thread so the HTTP response to /api/media/play returns
-     * immediately — the client discovers download/playback progress by polling /api/media/state,
-     * not by waiting on this request.
+     * Best-effort download-percentage watcher: polls pytube_api's /v3/download_progress/<id>
+     * whenever MediaSessionState's now-playing snapshot says a track is downloading. The download
+     * itself is now triggered server-side (play_youtube.py's _download), not by this app -- this
+     * just observes pytube_api's progress_hooks state, same endpoint as before, different trigger.
+     * Runs for the lifetime of the app (started once from init{} below), not per-play.
      */
-    private fun handleMediaPlay(session: IHTTPSession) {
-        val videoId = param(session, "video_id")
-        if (videoId.isBlank()) return
-        val title = param(session, "title")
-        val artist = param(session, "artist")
-        val thumbnail = param(session, "thumbnail")
-        mediaPlayer.markDownloading(videoId, title, artist, thumbnail)
-        Thread {
-            val base = Settings.pytubeBaseUrl.trimEnd('/')
-            if (base.isBlank()) {
-                mediaPlayer.markError(videoId, "pytube base URL not configured (Setup tab)")
-                return@Thread
-            }
-            val progressThread = startDownloadProgressPolling(base, videoId)
-            try {
-                val url = "$base/v3/video/$videoId?device=${deviceMac()}"
-                val req = Request.Builder().url(url).get().build()
-                http.newCall(req).execute().use { resp ->
-                    val body = resp.body?.string().orEmpty()
-                    when (val result = info.dourok.voicebot.media.parseVideoResponse(body, resp.code)) {
-                        is info.dourok.voicebot.media.PytubeVideoResult.Ready -> {
-                            val streamUrl = if (result.mp3Path.startsWith("http")) result.mp3Path
-                                else "$base${result.mp3Path}"
-                            mediaPlayer.play(videoId, streamUrl, title, artist, thumbnail)
-                        }
-                        is info.dourok.voicebot.media.PytubeVideoResult.Unavailable ->
-                            mediaPlayer.markError(videoId, result.message)
-                        is info.dourok.voicebot.media.PytubeVideoResult.Error ->
-                            mediaPlayer.markError(videoId, result.message)
-                    }
-                }
-            } catch (e: Exception) {
-                mediaPlayer.markError(videoId, e.message ?: "network error")
-            } finally {
-                progressThread.interrupt()
-            }
-        }.start()
-    }
+    @Volatile private var downloadPercent = -1
+    @Volatile private var downloadPercentVideoId: String? = null
 
-    /**
-     * Polls pytube_api's /v3/download_progress/<id> on a separate thread while the blocking
-     * /v3/video/<id> download call (above) is in flight, so the UI can show a real percentage
-     * instead of just an indeterminate spinner. pytube_api runs threaded=True, so this concurrent
-     * request doesn't block the main download call. Best-effort: network hiccups are ignored, the
-     * next tick just retries: this thread only ever improves the UI, never gates playback.
-     */
-    private fun startDownloadProgressPolling(base: String, videoId: String): Thread {
-        val t = Thread {
-            try {
-                while (!Thread.currentThread().isInterrupted) {
+    init {
+        Thread {
+            while (true) {
+                try {
                     Thread.sleep(700)
-                    val req = Request.Builder().url("$base/v3/download_progress/$videoId").get().build()
-                    http.newCall(req).execute().use { resp ->
-                        val percent = try {
-                            JSONObject(resp.body?.string().orEmpty()).optInt("percent", -1)
-                        } catch (e: Exception) { -1 }
-                        if (percent >= 0) mediaPlayer.updateDownloadPercent(videoId, percent)
+                    val np = MediaSessionState.nowPlaying.value
+                    if (np.state == MediaPlaybackState.DOWNLOADING && np.videoId != null) {
+                        if (np.videoId != downloadPercentVideoId) {
+                            downloadPercentVideoId = np.videoId
+                            downloadPercent = -1
+                        }
+                        val base = Settings.pytubeBaseUrl.trimEnd('/')
+                        if (base.isNotBlank()) {
+                            val req = Request.Builder().url("$base/v3/download_progress/${np.videoId}").get().build()
+                            http.newCall(req).execute().use { resp ->
+                                val percent = try {
+                                    JSONObject(resp.body?.string().orEmpty()).optInt("percent", -1)
+                                } catch (e: Exception) { -1 }
+                                if (percent >= 0) downloadPercent = percent
+                            }
+                        }
+                    } else {
+                        downloadPercentVideoId = null
+                        downloadPercent = -1
                     }
+                } catch (e: Exception) {
+                    // best-effort watcher -- ignore and let the next tick retry
                 }
-            } catch (e: InterruptedException) {
-                // normal shutdown once the main download call (above) finishes
-            } catch (e: Exception) {
-                // best-effort polling -- ignore and let the next tick retry
             }
-        }
-        t.isDaemon = true
-        t.start()
-        return t
+        }.apply { isDaemon = true }.start()
     }
 
     private fun buildMediaState(): String {
-        val s = mediaPlayer.state.value
-        val voiceActive = MediaCoordinator.voiceMusicActive.value
+        val np = MediaSessionState.nowPlaying.value
+        val queueArr = JSONArray()
+        MediaSessionState.queue.value.forEach {
+            queueArr.put(
+                JSONObject()
+                    .put("video_id", it.videoId).put("title", it.title)
+                    .put("artist", it.artist).put("thumbnail", it.thumbnail)
+                    .put("duration", it.duration)
+            )
+        }
         return JSONObject()
-            .put("playing", s.playing || voiceActive)
-            .put("video_id", s.videoId)
-            // No title/artist is available for voice-triggered plays (play_youtube.py doesn't send
-            // track metadata over the WS) -- show a generic label instead of leaving it blank.
-            .put("title", if (voiceActive && s.videoId == null) "Đang phát qua giọng nói" else s.title)
-            .put("artist", s.artist)
-            .put("cover_url", s.coverUrl)
-            .put("position_ms", s.positionMs)
-            .put("duration_ms", s.durationMs)
-            .put("download_state", s.downloadState.name.lowercase())
-            .put("download_percent", s.downloadPercent)
-            .put("error_message", s.errorMessage)
-            .put("ended", s.ended)
-            .put("voice_active", voiceActive)
+            .put("state", np.state.name.lowercase())
+            .put("video_id", np.videoId)
+            .put("title", np.title)
+            .put("artist", np.artist)
+            .put("cover_url", np.thumbnail)
+            .put("duration_s", np.durationS)
+            .put("position_s", np.positionS)
+            .put("download_percent", if (np.state == MediaPlaybackState.DOWNLOADING) downloadPercent else -1)
+            .put("queue", queueArr)
             .toString()
     }
 
