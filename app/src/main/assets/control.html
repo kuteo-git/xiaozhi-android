@@ -36,7 +36,7 @@
 ::-webkit-scrollbar-thumb{background:#1c2235;border-radius:4px;}
 [data-theme=light] *{scrollbar-color:#c8cfe8 transparent;}
 [data-theme=light] ::-webkit-scrollbar-thumb{background:#c8cfe8;}
-html,body{height:100%;}
+html,body{height:100%;overscroll-behavior:none;}   /* no page-level rubber-band / pull-to-refresh */
 body{background:var(--body-bg);color:var(--fg);
   font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
   display:flex;justify-content:center;
@@ -93,6 +93,10 @@ body{background:var(--body-bg);color:var(--fg);
 .seg button:active{background:rgba(128,128,128,.1);}
 .seg button.on:active{background:var(--grad);}
 
+/* Nested scrollers: `contain` stops a pane from handing its leftover scroll to the page behind
+   (the jarring part when scrollers are nested) while keeping the normal feel inside the pane --
+   unlike `none`, which also kills the inner bounce and reads as dead/abrupt on touch. */
+.page,.media-scroll,#chat,#haPick,#setupLog{overscroll-behavior:contain;}
 .page{flex:1;overflow-y:auto;display:none;flex-direction:column;}
 .page.on{display:flex;}
 
@@ -404,8 +408,6 @@ select:focus{border-color:rgba(232,69,60,.45);}
       <div class="ch"><span class="icon-badge ib-srv"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="7"/><path d="M3 10h14M10 3c2.5 2 2.5 12 0 14M10 3c-2.5 2-2.5 12 0 14"/></svg></span><h2>Server</h2></div>
       <div class="row"><label>OTA URL</label><input class="codein" id="ota" placeholder="http://host:8003/xiaozhi/ota/"></div>
       <div class="row" style="gap:8px"><button class="btn rec" style="flex:1;width:auto" onclick="connectServer()">Connect</button><span class="hint" id="srvStat" style="flex:1"></span></div>
-      <div class="row"><label>Pytube API</label><input class="codein" id="pytubeUrl" placeholder="http://host:114" onchange="set('pytube_base_url',this.value)"></div>
-      <div class="hint">Backend tìm/tải bài hát cho tab Media Player.</div>
     </div>
 
     <div class="card">
@@ -606,7 +608,6 @@ function render(s){
     if(s.llm_base_url)$('burl').value=s.llm_base_url;
     if(s.llm_model)$('lmodel').innerHTML=`<option value="${s.llm_model}">${s.llm_model}</option>`;
     if(s.llm_api_key_set)$('akey').placeholder='•••• (đã lưu — để trống nếu giữ nguyên)';
-    $('pytubeUrl').value=s.pytube_base_url||'';
     $('haUrl').value=s.ha_url||'';
     if(s.ha_token_set)$('haTok').placeholder='•••• (đã lưu)';
     renderHaSaved(s.ha_devices||'');

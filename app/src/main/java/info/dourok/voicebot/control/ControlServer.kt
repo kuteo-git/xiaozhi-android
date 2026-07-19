@@ -160,7 +160,6 @@ class ControlServer @Inject constructor(
             "llm_transport" -> Settings.llmTransport = v
             "wake_engine" -> Settings.wakeEngine = v
             "ota_url" -> Settings.otaUrl = v
-            "pytube_base_url" -> Settings.pytubeBaseUrl = v
             "ha_url" -> Settings.haUrl = v
             "ha_token" -> Settings.haToken = v
             "ha_devices" -> Settings.haDevices = v
@@ -233,7 +232,6 @@ class ControlServer @Inject constructor(
         o.put("llm_transport", Settings.llmTransport)
         o.put("wake_engine", Settings.wakeEngine)
         o.put("ota_url", Settings.otaUrl)
-        o.put("pytube_base_url", Settings.pytubeBaseUrl)
         o.put("ws_url", Settings.wsUrl)
         // TTS host derived from the configured WS host (de-hardcode); empty until a server is set.
         o.put("tts_host", ttsHostFromWs(Settings.wsUrl))
@@ -252,6 +250,20 @@ class ControlServer @Inject constructor(
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
         .build()
+
+    /**
+     * pytube_api runs alongside xiaozhi-server on a fixed port, and the server already points at it
+     * (PYTUBE_BASE_URL in play_youtube.py). Deriving it from the configured server host the same way
+     * [ttsHostFromWs] does keeps one source of truth instead of asking the user to type a host the
+     * app can work out for itself.
+     */
+    private fun pytubeBase(): String {
+        val ws = Settings.wsUrl
+        if (ws.isBlank()) return ""
+        return try {
+            "http://${java.net.URI(ws).host}:$PYTUBE_PORT"
+        } catch (e: Exception) { "" }
+    }
 
     private fun ttsHostFromWs(wsUrl: String): String {
         if (wsUrl.isBlank()) return ""
@@ -406,10 +418,10 @@ class ControlServer @Inject constructor(
     // Proxies to pytube_api (search/download-on-demand); playback itself is delegated to
     // MediaPlayerController. Follows the same OkHttp-proxy pattern as handleLlmModels/handleHaDevices.
 
-    /** GET {pytube_base_url}/v3/search?q=&limit= → reshaped as {"ok":true,"results":[...]}. */
+    /** GET {pytubeBase()}/v3/search?q=&limit= → reshaped as {"ok":true,"results":[...]}. */
     private fun handleMediaSearch(query: String): String {
-        val base = Settings.pytubeBaseUrl.trimEnd('/')
-        if (base.isBlank()) return """{"ok":false,"error":"pytube base URL not configured (Setup tab)"}"""
+        val base = pytubeBase()
+        if (base.isBlank()) return """{"ok":false,"error":"no server configured yet (Setup tab)"}"""
         if (query.isBlank()) return """{"ok":true,"results":[]}"""
         return try {
             val url = "$base/v3/search?q=${java.net.URLEncoder.encode(query, "UTF-8")}&limit=15"
@@ -452,7 +464,7 @@ class ControlServer @Inject constructor(
                             downloadPercentVideoId = np.videoId
                             downloadPercent = -1
                         }
-                        val base = Settings.pytubeBaseUrl.trimEnd('/')
+                        val base = pytubeBase()
                         if (base.isNotBlank()) {
                             val req = Request.Builder().url("$base/v3/download_progress/${np.videoId}").get().build()
                             http.newCall(req).execute().use { resp ->
@@ -583,6 +595,7 @@ class ControlServer @Inject constructor(
 
     companion object {
         private const val TAG = "ControlServer"
+        private const val PYTUBE_PORT = 114   // services/pytube_api.py binds this
         const val PORT = 8088
     }
 }
