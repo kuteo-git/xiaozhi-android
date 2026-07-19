@@ -528,43 +528,6 @@ select:focus{border-color:rgba(232,69,60,.45);}
 
 <script>
 const $=id=>document.getElementById(id);
-// Haptics: phones only -- gated on a coarse pointer AND on the event being a genuine touch, so a
-// desktop mouse never buzzes.
-//
-// Two mechanisms, because there is no single one that covers both platforms:
-//   Android  - navigator.vibrate().
-//   iOS      - Safari does not implement navigator.vibrate AT ALL. The only hook it exposes is
-//              toggling an <input type="checkbox" switch>, which fires system haptics on
-//              iOS 17.4+. So keep one hidden off-DOM-flow and click it. On anything older this
-//              is just a harmless click on a hidden checkbox.
-const IS_TOUCH=matchMedia('(pointer: coarse)').matches;
-let iosHaptic=null;
-if(IS_TOUCH&&!navigator.vibrate){
-  try{
-    const l=document.createElement('label');
-    l.setAttribute('aria-hidden','true');
-    l.style.display='none';
-    const cb=document.createElement('input');
-    cb.type='checkbox';cb.setAttribute('switch','');cb.tabIndex=-1;
-    l.appendChild(cb);
-    document.head.appendChild(l);
-    iosHaptic=l;
-  }catch(e){}
-}
-function haptic(ms){
-  if(!IS_TOUCH)return;
-  if(navigator.vibrate){ try{navigator.vibrate(ms);}catch(e){} return; }
-  if(iosHaptic){ try{iosHaptic.click();}catch(e){} }
-}
-document.addEventListener('pointerdown',e=>{
-  if(e.pointerType!=='touch')return;
-  if(e.target.closest('button,.sw,select,input[type=range]'))haptic(12);
-},{passive:true});
-// Sliders also tick when the value is committed (drag released), so a drag has a start and an end
-// rather than buzzing continuously through every step.
-document.addEventListener('change',e=>{
-  if(e.target&&e.target.type==='range')haptic(10);
-},true);
 // Inline vector icons: emoji render differently per platform (and looked wrong on phones).
 const SVG_MOON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z"/></svg>';
 const SVG_SUN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.4M12 19.6V22M2 12h2.4M19.6 12H22M5 5l1.7 1.7M17.3 17.3L19 19M19 5l-1.7 1.7M6.7 17.3L5 19"/></svg>';
