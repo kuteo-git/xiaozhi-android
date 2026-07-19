@@ -352,6 +352,19 @@ class MediaPlayerController @Inject constructor(
     private val _state = MutableStateFlow(MediaPlayerState())
     val state: StateFlow<MediaPlayerState> = _state.asStateFlow()
 
+    // ExoPlayer doesn't push position changes; poll it on the main thread every 500ms while
+    // playing so /api/media/state (read from _state, never from `player` directly) stays fresh.
+    // Declared before `init` since Kotlin initializes properties in declaration order and `init`
+    // references it.
+    private val positionTicker = object : Runnable {
+        override fun run() {
+            if (_state.value.playing) {
+                _state.value = _state.value.copy(positionMs = player.currentPosition.coerceAtLeast(0))
+            }
+            mainHandler.postDelayed(this, 500)
+        }
+    }
+
     init {
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -374,17 +387,6 @@ class MediaPlayerController @Inject constructor(
             }
         })
         mainHandler.post(positionTicker)
-    }
-
-    // ExoPlayer doesn't push position changes; poll it on the main thread every 500ms while
-    // playing so /api/media/state (read from _state, never from `player` directly) stays fresh.
-    private val positionTicker = object : Runnable {
-        override fun run() {
-            if (_state.value.playing) {
-                _state.value = _state.value.copy(positionMs = player.currentPosition.coerceAtLeast(0))
-            }
-            mainHandler.postDelayed(this, 500)
-        }
     }
 
     /** Called by ControlServer right before it asks pytube_api to ensure [videoId] is cached. */
