@@ -116,6 +116,7 @@ class VoiceAssistant @Inject constructor(
             launch { runAudioLoop() }
             launch { protocol.incomingJsonFlow.collect(::handleServerMessage) }
             launch { TextCommands.flow.collect { onTextCommand(it) } }
+            launch { MediaCommands.flow.collect { onMediaCommand(it) } }
             launch { state.collect { refreshLed() } }   // LED bám theo trạng thái
             launch { state.collect { Log.i(TAG, "state -> $it isAwake=$isAwake t=${System.currentTimeMillis()}") } }
         }
@@ -298,33 +299,34 @@ class VoiceAssistant @Inject constructor(
     }
 
     /**
-     * Media Player tab (web control panel) commands. Plain functions, safe to call from any
-     * thread (ControlServer calls these from NanoHTTPD worker threads) -- no-ops if the voice
-     * pipeline hasn't started yet (e.g. before the first app launch reaches ChatScreen).
+     * Media Player tab (web control panel) command, arriving via [MediaCommands] (see that file for
+     * why ControlServer can't call this instance directly).
+     *
+     * Play opens the audio channel if needed and marks the session awake, exactly like
+     * [onTextCommand] -- otherwise pressing Play while the robot is idle would send into a closed
+     * channel and do nothing. The others only make sense against an already-running session, so
+     * they're dropped when the channel is closed.
      */
-    fun sendMediaPlay(videoId: String, title: String, artist: String, thumbnail: String) {
-        if (!::protocol.isInitialized || !::scope.isInitialized) return
-        scope.launch { protocol.sendMediaPlay(videoId, title, artist, thumbnail) }
-    }
-
-    fun sendMediaNext() {
-        if (!::protocol.isInitialized || !::scope.isInitialized) return
-        scope.launch { protocol.sendMediaNext() }
-    }
-
-    fun sendMediaPause() {
-        if (!::protocol.isInitialized || !::scope.isInitialized) return
-        scope.launch { protocol.sendMediaPause() }
-    }
-
-    fun sendMediaResume() {
-        if (!::protocol.isInitialized || !::scope.isInitialized) return
-        scope.launch { protocol.sendMediaResume() }
-    }
-
-    fun sendMediaStop() {
-        if (!::protocol.isInitialized || !::scope.isInitialized) return
-        scope.launch { protocol.sendMediaStop() }
+    private suspend fun onMediaCommand(cmd: MediaCommands.Command) {
+        Log.i(TAG, "media command: $cmd t=${System.currentTimeMillis()}")
+        if (cmd is MediaCommands.Command.Play) {
+            if (!protocol.isAudioChannelOpened()) protocol.openAudioChannel()
+            isAwake = true
+            autoTurns = 0
+            protocol.sendMediaPlay(cmd.videoId, cmd.title, cmd.artist, cmd.thumbnail)
+            return
+        }
+        if (!protocol.isAudioChannelOpened()) {
+            Log.i(TAG, "media command dropped (channel closed): $cmd")
+            return
+        }
+        when (cmd) {
+            is MediaCommands.Command.Next -> protocol.sendMediaNext()
+            is MediaCommands.Command.Pause -> protocol.sendMediaPause()
+            is MediaCommands.Command.Resume -> protocol.sendMediaResume()
+            is MediaCommands.Command.Stop -> protocol.sendMediaStop()
+            is MediaCommands.Command.Play -> {}  // handled above
+        }
     }
 
     /** Hardware button: idle -> wake; awake (listening OR speaking) -> sleep. */

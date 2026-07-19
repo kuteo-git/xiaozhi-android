@@ -822,12 +822,15 @@ function mediaToggle(){fetch(mediaState.state==='playing'?'/api/media/pause':'/a
 function mediaNext(){fetch('/api/media/next',{method:'POST'});}
 function renderNowPlaying(s){
   mediaState=s;
-  // A session is active -> show the live server-pushed queue as "the list" (so "what's next" is
-  // visible regardless of whether it started from voice or the web); otherwise show the last
-  // manual search results. Only re-render the list when it actually changes (not every poll tick)
-  // to avoid flicker/scroll-jank; button/ring states still refresh every tick via applyMediaButtonStates.
+  // What the list shows: the user's search results whenever the search box has text (so typing a
+  // query while music plays keeps its results on screen -- the poll must never yank them away),
+  // otherwise the live server-pushed queue while a session is active (so "what's next" is visible
+  // regardless of whether it started from voice or the web). Clear the box to go back to the queue.
+  // Only re-render when the list actually changes (not every poll tick) to avoid flicker/scroll-jank;
+  // button/ring states still refresh every tick via applyMediaButtonStates.
   const sessionActive=(s.state==='playing'||s.state==='downloading');
-  const list=sessionActive?(s.queue||[]):mediaSearchResultsCache;
+  const searching=!!$('mediaSearch').value.trim();
+  const list=searching?mediaSearchResultsCache:(sessionActive?(s.queue||[]):mediaSearchResultsCache);
   const sig=JSON.stringify(list);
   if(sig!==lastDisplayedSig){lastDisplayedSig=sig;mediaResultsCache=list;renderMediaResults();}
   else{applyMediaButtonStates();}

@@ -15,11 +15,11 @@ import info.dourok.voicebot.domain.voice.AudioPlayback
 import info.dourok.voicebot.domain.voice.ConversationLog
 import info.dourok.voicebot.domain.voice.LedIndicator
 import info.dourok.voicebot.domain.voice.LedState
+import info.dourok.voicebot.domain.voice.MediaCommands
 import info.dourok.voicebot.domain.voice.MediaPlaybackState
 import info.dourok.voicebot.domain.voice.MediaSessionState
 import info.dourok.voicebot.domain.voice.MicTest
 import info.dourok.voicebot.domain.voice.TextCommands
-import info.dourok.voicebot.domain.voice.VoiceAssistant
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -42,7 +42,6 @@ class ControlServer @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val playback: AudioPlayback,
     private val led: LedIndicator,
-    private val voiceAssistant: VoiceAssistant,
 ) : NanoHTTPD(PORT) {
 
     fun startServer() {
@@ -89,16 +88,16 @@ class ControlServer @Inject constructor(
             "/api/media/play" -> {
                 val videoId = param(session, "video_id")
                 if (videoId.isNotBlank()) {
-                    voiceAssistant.sendMediaPlay(
+                    MediaCommands.flow.tryEmit(MediaCommands.Command.Play(
                         videoId, param(session, "title"), param(session, "artist"), param(session, "thumbnail"),
-                    )
+                    ))
                 }
                 json("""{"ok":true}""")
             }
-            "/api/media/next" -> { voiceAssistant.sendMediaNext(); json("""{"ok":true}""") }
-            "/api/media/pause" -> { voiceAssistant.sendMediaPause(); json("""{"ok":true}""") }
-            "/api/media/resume" -> { voiceAssistant.sendMediaResume(); json("""{"ok":true}""") }
-            "/api/media/stop" -> { voiceAssistant.sendMediaStop(); json("""{"ok":true}""") }
+            "/api/media/next" -> { MediaCommands.flow.tryEmit(MediaCommands.Command.Next); json("""{"ok":true}""") }
+            "/api/media/pause" -> { MediaCommands.flow.tryEmit(MediaCommands.Command.Pause); json("""{"ok":true}""") }
+            "/api/media/resume" -> { MediaCommands.flow.tryEmit(MediaCommands.Command.Resume); json("""{"ok":true}""") }
+            "/api/media/stop" -> { MediaCommands.flow.tryEmit(MediaCommands.Command.Stop); json("""{"ok":true}""") }
             "/api/media/state" -> json(buildMediaState())
             else -> newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "404")
         }
