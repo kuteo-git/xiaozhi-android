@@ -101,6 +101,57 @@ abstract class Protocol {
         sendText(json.toString())
     }
 
+    /** Media Player tab (web control panel) commands -- routed through the same play_youtube
+     *  session a voice command would use (see xiaozhi-server's core/handle/mediaHandle.py). */
+    suspend fun sendMediaPlay(videoId: String, title: String, artist: String, thumbnail: String) {
+        val json = JSONObject().apply {
+            put("session_id", sessionId)
+            put("type", "media")
+            put("action", "play")
+            put("video_id", videoId)
+            put("title", title)
+            put("artist", artist)
+            put("thumbnail", thumbnail)
+        }
+        sendText(json.toString())
+    }
+
+    suspend fun sendMediaNext() {
+        val json = JSONObject().apply {
+            put("session_id", sessionId)
+            put("type", "media")
+            put("action", "next")
+        }
+        sendText(json.toString())
+    }
+
+    suspend fun sendMediaPause() {
+        val json = JSONObject().apply {
+            put("session_id", sessionId)
+            put("type", "media")
+            put("action", "pause")
+        }
+        sendText(json.toString())
+    }
+
+    suspend fun sendMediaResume() {
+        val json = JSONObject().apply {
+            put("session_id", sessionId)
+            put("type", "media")
+            put("action", "resume")
+        }
+        sendText(json.toString())
+    }
+
+    suspend fun sendMediaStop() {
+        val json = JSONObject().apply {
+            put("session_id", sessionId)
+            put("type", "media")
+            put("action", "stop")
+        }
+        sendText(json.toString())
+    }
+
     abstract fun dispose()
 }
 
