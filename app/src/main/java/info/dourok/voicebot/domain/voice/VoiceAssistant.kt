@@ -313,7 +313,7 @@ class VoiceAssistant @Inject constructor(
             if (!protocol.isAudioChannelOpened()) protocol.openAudioChannel()
             isAwake = true
             autoTurns = 0
-            protocol.sendMediaPlay(cmd.videoId, cmd.title, cmd.artist, cmd.thumbnail)
+            protocol.sendMediaPlay(cmd.itemsJson)
             return
         }
         if (!protocol.isAudioChannelOpened()) {

@@ -14,12 +14,8 @@ import kotlinx.coroutines.flow.MutableSharedFlow
  */
 object MediaCommands {
     sealed class Command {
-        data class Play(
-            val videoId: String,
-            val title: String,
-            val artist: String,
-            val thumbnail: String,
-        ) : Command()
+        /** [itemsJson]: JSON array of the panel's displayed list, starting at the tapped song. */
+        data class Play(val itemsJson: String) : Command()
         object Next : Command()
         object Pause : Command()
         object Resume : Command()

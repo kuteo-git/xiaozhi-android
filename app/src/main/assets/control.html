@@ -812,11 +812,19 @@ function applyMediaButtonStates(){
     row.classList.toggle('playing',row.dataset.vid===mediaState.video_id&&mediaState.state==='playing');
   });
 }
+// Send the list we're DISPLAYING, starting at the tapped song, so the robot plays exactly what the
+// user sees ("next" walks this list) instead of jumping into YouTube's related-song radio. Related
+// songs still take over once this list runs out, so playback stays endless. Sent in the POST body:
+// a dozen songs with titles + thumbnail URLs is several KB, which a query string would truncate.
+const MEDIA_QUEUE_MAX=20;
 function mediaPlay(videoId){
-  const r=mediaResultsCache.find(x=>x.video_id===videoId);
-  if(!r)return;
-  const p=`video_id=${encodeURIComponent(videoId)}&title=${encodeURIComponent(r.title||'')}&artist=${encodeURIComponent(r.artist||'')}&thumbnail=${encodeURIComponent(r.thumbnail||'')}`;
-  fetch('/api/media/play?'+p,{method:'POST'});
+  const i=mediaResultsCache.findIndex(x=>x.video_id===videoId);
+  if(i<0)return;
+  const items=mediaResultsCache.slice(i,i+MEDIA_QUEUE_MAX).map(r=>({
+    video_id:r.video_id,title:r.title||'',artist:r.artist||'',
+    thumbnail:r.thumbnail||'',duration:r.duration||''
+  }));
+  fetch('/api/media/play',{method:'POST',body:JSON.stringify(items)});
 }
 function mediaToggle(){fetch(mediaState.state==='playing'?'/api/media/pause':'/api/media/resume',{method:'POST'});}
 function mediaNext(){fetch('/api/media/next',{method:'POST'});}

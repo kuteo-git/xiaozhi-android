@@ -85,15 +85,7 @@ class ControlServer @Inject constructor(
             "/api/ha/devices" -> json(handleHaDevices(session))
             "/api/ha/test" -> json(handleHaTest(session))
             "/api/media/search" -> json(handleMediaSearch(param(session, "q")))
-            "/api/media/play" -> {
-                val videoId = param(session, "video_id")
-                if (videoId.isNotBlank()) {
-                    MediaCommands.flow.tryEmit(MediaCommands.Command.Play(
-                        videoId, param(session, "title"), param(session, "artist"), param(session, "thumbnail"),
-                    ))
-                }
-                json("""{"ok":true}""")
-            }
+            "/api/media/play" -> json(handleMediaPlay(session))
             "/api/media/next" -> { MediaCommands.flow.tryEmit(MediaCommands.Command.Next); json("""{"ok":true}""") }
             "/api/media/pause" -> { MediaCommands.flow.tryEmit(MediaCommands.Command.Pause); json("""{"ok":true}""") }
             "/api/media/resume" -> { MediaCommands.flow.tryEmit(MediaCommands.Command.Resume); json("""{"ok":true}""") }
@@ -474,6 +466,30 @@ class ControlServer @Inject constructor(
                 }
             }
         }.apply { isDaemon = true }.start()
+    }
+
+    /**
+     * The panel POSTs the list it is displaying (JSON array, starting at the tapped song) in the
+     * BODY, not the query string: 15 songs with titles + thumbnail URLs runs to several KB, and a
+     * query string that long silently truncates while still returning 200 (the same trap the
+     * Assistant persona hit in [handleSet]).
+     */
+    private fun handleMediaPlay(session: IHTTPSession): String {
+        val body = HashMap<String, String>()
+        try {
+            session.parseBody(body)
+        } catch (e: Exception) {
+            Log.e(TAG, "parseBody for /api/media/play: ${e.message}")
+            return """{"ok":false,"error":"could not read body"}"""
+        }
+        val items = try {
+            JSONArray(body["postData"].orEmpty())
+        } catch (e: Exception) {
+            return """{"ok":false,"error":"items must be a JSON array"}"""
+        }
+        if (items.length() == 0) return """{"ok":false,"error":"empty items"}"""
+        MediaCommands.flow.tryEmit(MediaCommands.Command.Play(items.toString()))
+        return """{"ok":true}"""
     }
 
     private fun buildMediaState(): String {
