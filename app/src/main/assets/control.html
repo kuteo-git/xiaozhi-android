@@ -454,10 +454,10 @@ select:focus{border-color:rgba(232,69,60,.45);}
     <div class="np-info">
       <div class="np-title" id="npTitle"></div>
       <div class="np-artist" id="npArtist"></div>
-      <input type="range" id="npSeek" min="0" max="0" value="0">
+      <input type="range" id="npSeek" min="0" max="0" value="0" disabled>
     </div>
     <div class="np-ctrl">
-      <button id="npPrev" onclick="mediaPrev()">⏮</button>
+      <button id="npPrev">⏮</button>
       <button id="npPlay" onclick="mediaToggle()">▶</button>
       <button id="npNext" onclick="mediaNext()">⏭</button>
     </div>
@@ -722,18 +722,18 @@ function editHaLine(i,v){const l=_haLines();l[i]=v.trim();_saveHaLines(l);}
 function removeHaLine(i){const l=_haLines();l.splice(i,1);_saveHaLines(l);}
 
 // ── Media Player ──────────────────────────────────
-let mediaResultsCache=[];
+let mediaSearchResultsCache=[];  // last manual search results (persisted across reloads)
+let mediaResultsCache=[];        // whichever list is CURRENTLY displayed (search results OR the live server queue)
 let mediaSearchTimer=null;
-let mediaState={playing:false,video_id:null,download_state:'idle'};
+let mediaState={state:'idle',video_id:null,download_percent:-1};
 let mediaPollTimer=null;
-let npSeekDragging=false;
-let lastAutoAdvanced=null;
+let lastDisplayedSig='';
 
 // Persist the last search (query + results) across page reloads -- searching is a network call,
 // losing it on every refresh is annoying and pointless since the results themselves don't change
 // from one reload to the next.
 function saveMediaSearchState(){
-  try{localStorage.setItem('r1-media-search',JSON.stringify({q:$('mediaSearch').value,results:mediaResultsCache}));}catch(e){}
+  try{localStorage.setItem('r1-media-search',JSON.stringify({q:$('mediaSearch').value,results:mediaSearchResultsCache}));}catch(e){}
 }
 function restoreMediaSearchState(){
   try{
@@ -741,7 +741,9 @@ function restoreMediaSearchState(){
     if(!raw)return;
     const s=JSON.parse(raw);
     $('mediaSearch').value=s.q||'';
-    mediaResultsCache=s.results||[];
+    mediaSearchResultsCache=s.results||[];
+    mediaResultsCache=mediaSearchResultsCache;
+    lastDisplayedSig=JSON.stringify(mediaResultsCache);
     renderMediaResults();
   }catch(e){}
 }
@@ -752,13 +754,17 @@ function onMediaSearchInput(){
   mediaSearchTimer=setTimeout(()=>mediaSearch(q),400);
 }
 async function mediaSearch(q){
-  if(!q){mediaResultsCache=[];renderMediaResults();saveMediaSearchState();return;}
+  if(!q){mediaSearchResultsCache=[];mediaResultsCache=[];lastDisplayedSig=JSON.stringify(mediaResultsCache);renderMediaResults();saveMediaSearchState();return;}
   try{
     const j=await(await fetch('/api/media/search?q='+encodeURIComponent(q))).json();
-    mediaResultsCache=j.ok?j.results:[];
+    mediaSearchResultsCache=j.ok?j.results:[];
+    // Show immediately -- if a session happens to be active, the next poll tick (within 1s) swaps
+    // the list back to the live queue, which is a fine, self-correcting, rare-case blip.
+    mediaResultsCache=mediaSearchResultsCache;
+    lastDisplayedSig=JSON.stringify(mediaResultsCache);
     renderMediaResults(j.ok?null:j.error);
     saveMediaSearchState();
-  }catch(e){mediaResultsCache=[];renderMediaResults('Lỗi tìm kiếm');}
+  }catch(e){mediaSearchResultsCache=[];mediaResultsCache=[];renderMediaResults('Lỗi tìm kiếm');}
 }
 function renderMediaResults(err){
   const el=$('mediaResults');
@@ -768,8 +774,8 @@ function renderMediaResults(err){
     <div class="list-item" data-vid="${r.video_id}">
       <img class="li-cover" src="${r.thumbnail}" alt="">
       <div class="li-info">
-        <div class="li-title">${r.title.replace(/</g,'&lt;')}</div>
-        <div class="li-sub">${r.artist}${r.duration?(' · '+r.duration):''}</div>
+        <div class="li-title">${(r.title||'').replace(/</g,'&lt;')}</div>
+        <div class="li-sub">${r.artist||''}${r.duration?(' · '+r.duration):''}</div>
       </div>
       <div class="li-play-wrap" data-vid="${r.video_id}">
         <svg class="li-ring" viewBox="0 0 40 40"><circle cx="20" cy="20" r="17"/></svg>
@@ -778,22 +784,21 @@ function renderMediaResults(err){
     </div>`).join('');
   applyMediaButtonStates();
 }
-// Tapping the currently-playing (and ready) item's button toggles play/pause in place; tapping any
-// other item starts it. Keeps the button meaningful without moving the item around in the list.
+// Tapping the currently-playing item's button toggles play/pause in place; tapping any other item
+// (from search results or the live queue) starts it.
 function mediaItemTap(videoId){
-  if(videoId===mediaState.video_id&&mediaState.download_state==='ready')mediaToggle();
+  if(videoId===mediaState.video_id&&(mediaState.state==='playing'||mediaState.state==='downloading'))mediaToggle();
   else mediaPlay(videoId);
 }
 const LI_RING_CIRC=2*Math.PI*17;  // matches the r=17 <circle> in the .li-ring SVG markup
 function applyMediaButtonStates(){
   document.querySelectorAll('.li-play-wrap').forEach(w=>{
     const active=w.dataset.vid===mediaState.video_id;
-    const downloading=active&&mediaState.download_state==='downloading';
+    const downloading=active&&mediaState.state==='downloading';
     const pct=mediaState.download_percent;
     const determinate=downloading&&pct>=0&&pct<=100;
     w.classList.toggle('downloading',downloading);
     w.classList.toggle('determinate',determinate);
-    w.classList.toggle('error',active&&mediaState.download_state==='error');
     const circle=w.querySelector('.li-ring circle');
     if(determinate){
       circle.style.strokeDasharray=LI_RING_CIRC+' '+LI_RING_CIRC;
@@ -801,69 +806,43 @@ function applyMediaButtonStates(){
     }else{
       circle.style.strokeDasharray='';circle.style.strokeDashoffset='';
     }
-    w.querySelector('.li-play').textContent=(active&&mediaState.playing)?'⏸':'▶';
+    w.querySelector('.li-play').textContent=(active&&mediaState.state==='playing')?'⏸':'▶';
   });
   document.querySelectorAll('.list-item').forEach(row=>{
-    row.classList.toggle('playing',row.dataset.vid===mediaState.video_id&&mediaState.playing);
+    row.classList.toggle('playing',row.dataset.vid===mediaState.video_id&&mediaState.state==='playing');
   });
 }
 function mediaPlay(videoId){
   const r=mediaResultsCache.find(x=>x.video_id===videoId);
   if(!r)return;
-  const p=`video_id=${encodeURIComponent(videoId)}&title=${encodeURIComponent(r.title)}&artist=${encodeURIComponent(r.artist)}&thumbnail=${encodeURIComponent(r.thumbnailUrl||r.thumbnail||'')}`;
+  const p=`video_id=${encodeURIComponent(videoId)}&title=${encodeURIComponent(r.title||'')}&artist=${encodeURIComponent(r.artist||'')}&thumbnail=${encodeURIComponent(r.thumbnail||'')}`;
   fetch('/api/media/play?'+p,{method:'POST'});
 }
-function mediaToggle(){fetch(mediaState.playing?'/api/media/pause':'/api/media/resume',{method:'POST'});}
-function mediaPrev(){mediaStep(-1);}
-function mediaNext(){mediaStep(1);}
-function mediaStep(dir){
-  const i=mediaResultsCache.findIndex(x=>x.video_id===mediaState.video_id);
-  if(i<0)return;
-  const j=i+dir;
-  if(j<0||j>=mediaResultsCache.length)return;
-  mediaPlay(mediaResultsCache[j].video_id);
-}
+function mediaToggle(){fetch(mediaState.state==='playing'?'/api/media/pause':'/api/media/resume',{method:'POST'});}
+function mediaNext(){fetch('/api/media/next',{method:'POST'});}
 function renderNowPlaying(s){
   mediaState=s;
-  // Track finished on its own -> advance to the next item in the currently displayed list (once
-  // per finish; lastAutoAdvanced guards against re-triggering on every poll tick while ended stays true).
-  if(s.ended&&s.video_id&&s.video_id!==lastAutoAdvanced){
-    lastAutoAdvanced=s.video_id;
-    mediaStep(1);
-  }
+  // A session is active -> show the live server-pushed queue as "the list" (so "what's next" is
+  // visible regardless of whether it started from voice or the web); otherwise show the last
+  // manual search results. Only re-render the list when it actually changes (not every poll tick)
+  // to avoid flicker/scroll-jank; button/ring states still refresh every tick via applyMediaButtonStates.
+  const sessionActive=(s.state==='playing'||s.state==='downloading');
+  const list=sessionActive?(s.queue||[]):mediaSearchResultsCache;
+  const sig=JSON.stringify(list);
+  if(sig!==lastDisplayedSig){lastDisplayedSig=sig;mediaResultsCache=list;renderMediaResults();}
+  else{applyMediaButtonStates();}
   const np=$('nowPlaying');
-  if(!s.video_id&&!s.voice_active){np.hidden=true;applyMediaButtonStates();return;}
+  if(!sessionActive){np.hidden=true;return;}
   np.hidden=false;
-  if(s.voice_active&&!s.video_id){
-    // Playing via voice chat (play_youtube) -- no per-track metadata or seek/prev/next available,
-    // just reflect that something is playing so it isn't a silent gap in the panel.
-    $('npCover').src='';
-    $('npTitle').textContent=s.title||'🎵 Đang phát qua giọng nói';
-    $('npArtist').textContent='';
-    $('npPlay').textContent='⏸';
-    $('npSeek').max=0;$('npSeek').value=0;
-    $('npPrev').disabled=true;$('npNext').disabled=true;
-    applyMediaButtonStates();
-    return;
-  }
   $('npCover').src=s.cover_url||'';
   $('npTitle').textContent=s.title||'';
   $('npArtist').textContent=s.artist||'';
-  $('npPlay').textContent=s.playing?'⏸':'▶';
-  if(!npSeekDragging){
-    $('npSeek').max=s.duration_ms||0;
-    $('npSeek').value=s.position_ms||0;
-  }
-  const i=mediaResultsCache.findIndex(x=>x.video_id===s.video_id);
-  $('npPrev').disabled=(i<=0);
-  $('npNext').disabled=(i<0||i>=mediaResultsCache.length-1);
-  applyMediaButtonStates();
+  $('npPlay').textContent=s.state==='playing'?'⏸':'▶';
+  $('npSeek').max=s.duration_s||0;
+  $('npSeek').value=s.position_s||0;
+  $('npPrev').disabled=true;  // no "previous" concept server-side (only forward/related-song queue)
+  $('npNext').disabled=!sessionActive;
 }
-$('npSeek').addEventListener('pointerdown',()=>npSeekDragging=true);
-$('npSeek').addEventListener('change',e=>{
-  fetch('/api/media/seek?position_ms='+Math.round(e.target.value),{method:'POST'});
-  npSeekDragging=false;
-});
 function mediaPollStart(){if(mediaPollTimer)return;mediaPollTick();mediaPollTimer=setInterval(mediaPollTick,1000);}
 function mediaPollStop(){clearInterval(mediaPollTimer);mediaPollTimer=null;}
 async function mediaPollTick(){
