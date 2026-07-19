@@ -3,6 +3,7 @@ package info.dourok.voicebot.media
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
@@ -104,7 +105,8 @@ class MediaPlayerController @Inject constructor(
 
     /** Starts playback once pytube_api has confirmed [streamUrl] (its /v3/mp3/<id> URL) is ready. */
     fun play(videoId: String, streamUrl: String, title: String, artist: String, coverUrl: String) {
-        MediaCoordinator.webPlayRequested.tryEmit(Unit)  // interrupt whatever the voice pipeline is doing
+        val emitted = MediaCoordinator.webPlayRequested.tryEmit(Unit)  // interrupt the voice pipeline
+        Log.i(TAG, "play($videoId): webPlayRequested emitted=$emitted t=${System.currentTimeMillis()}")
         mainHandler.post {
             val item = MediaItem.Builder()
                 .setUri(streamUrl)
@@ -122,5 +124,9 @@ class MediaPlayerController @Inject constructor(
     fun seekTo(positionMs: Long) {
         mainHandler.post { player.seekTo(positionMs) }
         _state.value = _state.value.copy(positionMs = positionMs)  // optimistic, avoids a stale poll flash
+    }
+
+    companion object {
+        private const val TAG = "MediaPlayerController"
     }
 }

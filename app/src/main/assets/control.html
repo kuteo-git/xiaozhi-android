@@ -233,23 +233,30 @@ select:focus{border-color:rgba(232,69,60,.45);}
 .inbar button:active{transform:scale(.9);box-shadow:0 2px 8px rgba(232,69,60,.2);}
 
 /* ── MEDIA PLAYER ──────────────────────────────── */
-.list-item{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line);}
+.media-scroll{flex:1;overflow-y:auto;min-height:0;}
+.list-item{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line);
+  border-radius:8px;transition:background .15s;}
 .list-item:last-child{border-bottom:0;}
+.list-item.playing{background:var(--grad-dim);}
 .li-cover{width:44px;height:44px;border-radius:8px;object-fit:cover;background:var(--card2);flex-shrink:0;}
 .li-info{flex:1;min-width:0;}
 .li-title{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .li-sub{font-size:11.5px;color:var(--mut);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.li-play{flex-shrink:0;width:36px;height:36px;border-radius:50%;border:0;background:var(--grad);color:#fff;
+/* Wrapper gives the download ring (SVG, not conic-gradient -- broader WebView support) a place to
+   sit around the button without affecting layout. */
+.li-play-wrap{position:relative;flex-shrink:0;width:36px;height:36px;}
+.li-ring{position:absolute;inset:-4px;width:44px;height:44px;opacity:0;pointer-events:none;
+  transform:rotate(-90deg);transition:opacity .15s;}
+.li-ring circle{fill:none;stroke:var(--a1);stroke-width:2.5;stroke-linecap:round;stroke-dasharray:32 75;}
+.li-play-wrap.downloading .li-ring{opacity:1;animation:li-spin 1s linear infinite;}
+.li-play{width:36px;height:36px;border-radius:50%;border:0;background:var(--grad);color:#fff;
   font-size:14px;cursor:pointer;box-shadow:0 3px 10px rgba(232,69,60,.3);}
-.li-play.downloading{background:var(--card2);color:var(--a1);border:2px solid var(--line);
-  border-top-color:var(--a1);animation:li-spin 0.8s linear infinite;box-shadow:none;}
-.li-play.error{background:rgba(239,68,68,.12);color:var(--err);border:1px solid rgba(239,68,68,.3);box-shadow:none;}
-@keyframes li-spin{to{transform:rotate(360deg);}}
+.li-play-wrap.downloading .li-play{background:var(--card2);color:var(--a1);box-shadow:none;}
+.li-play-wrap.error .li-play{background:rgba(239,68,68,.12);color:var(--err);border:1px solid rgba(239,68,68,.3);box-shadow:none;}
+@keyframes li-spin{to{transform:rotate(270deg);}}
 
-#pmedia{position:relative;}
-.now-playing{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:10px;
-  padding:10px 13px;background:var(--card);border-top:1px solid var(--line);
-  backdrop-filter:blur(12px);}
+.now-playing{display:flex;align-items:center;gap:10px;flex-shrink:0;
+  padding:10px 13px;background:var(--card);border-top:1px solid var(--line);}
 .now-playing[hidden]{display:none;}
 .np-cover{width:40px;height:40px;border-radius:8px;object-fit:cover;background:var(--card2);flex-shrink:0;}
 .np-info{flex:1;min-width:0;}
@@ -430,10 +437,12 @@ select:focus{border-color:rgba(232,69,60,.45);}
 </div>
 <!-- MEDIA PLAYER -->
 <div id="pmedia" class="page">
-  <div class="settings" style="padding-bottom:100px">
-    <div class="card">
-      <div class="row" style="margin:0"><input class="codein" id="mediaSearch" placeholder="🔍 Tìm bài hát…" oninput="onMediaSearchInput()" style="flex:1"></div>
-      <div id="mediaResults" style="margin-top:8px"></div>
+  <div id="mediaScroll" class="media-scroll">
+    <div class="settings">
+      <div class="card">
+        <div class="row" style="margin:0"><input class="codein" id="mediaSearch" placeholder="🔍 Tìm bài hát…" oninput="onMediaSearchInput()" style="flex:1"></div>
+        <div id="mediaResults" style="margin-top:8px"></div>
+      </div>
     </div>
   </div>
   <div id="nowPlaying" class="now-playing" hidden>
@@ -752,34 +761,35 @@ function renderMediaResults(err){
   if(err){el.innerHTML=`<div class="empty">✕ ${err}</div>`;return;}
   if(!mediaResultsCache.length){el.innerHTML='<div class="empty">🎵 Tìm bài hát để bắt đầu</div>';return;}
   el.innerHTML=mediaResultsCache.map(r=>`
-    <div class="list-item">
+    <div class="list-item" data-vid="${r.video_id}">
       <img class="li-cover" src="${r.thumbnail}" alt="">
       <div class="li-info">
         <div class="li-title">${r.title.replace(/</g,'&lt;')}</div>
         <div class="li-sub">${r.artist}${r.duration?(' · '+r.duration):''}</div>
       </div>
-      <button class="li-play" data-vid="${r.video_id}" onclick="mediaPlay('${r.video_id}')">▶</button>
+      <div class="li-play-wrap" data-vid="${r.video_id}">
+        <svg class="li-ring" viewBox="0 0 40 40"><circle cx="20" cy="20" r="17"/></svg>
+        <button class="li-play" onclick="mediaItemTap('${r.video_id}')">▶</button>
+      </div>
     </div>`).join('');
   applyMediaButtonStates();
 }
-function applyMediaButtonStates(){
-  document.querySelectorAll('.li-play').forEach(b=>{
-    const active=b.dataset.vid===mediaState.video_id;
-    b.classList.toggle('downloading',active&&mediaState.download_state==='downloading');
-    b.classList.toggle('error',active&&mediaState.download_state==='error');
-  });
+// Tapping the currently-playing (and ready) item's button toggles play/pause in place; tapping any
+// other item starts it. Keeps the button meaningful without moving the item around in the list.
+function mediaItemTap(videoId){
+  if(videoId===mediaState.video_id&&mediaState.download_state==='ready')mediaToggle();
+  else mediaPlay(videoId);
 }
-// Keep the currently-playing track pinned at index 0 so it's always visible without scrolling,
-// whether playback started from this list or from a voice command. Returns true if the order
-// actually changed (caller re-renders only then, to avoid needless flicker on every poll tick).
-function pinPlayingToTop(videoId){
-  if(!videoId)return false;
-  const i=mediaResultsCache.findIndex(x=>x.video_id===videoId);
-  if(i<=0)return false;
-  const[item]=mediaResultsCache.splice(i,1);
-  mediaResultsCache.unshift(item);
-  saveMediaSearchState();
-  return true;
+function applyMediaButtonStates(){
+  document.querySelectorAll('.li-play-wrap').forEach(w=>{
+    const active=w.dataset.vid===mediaState.video_id;
+    w.classList.toggle('downloading',active&&mediaState.download_state==='downloading');
+    w.classList.toggle('error',active&&mediaState.download_state==='error');
+    w.querySelector('.li-play').textContent=(active&&mediaState.playing)?'⏸':'▶';
+  });
+  document.querySelectorAll('.list-item').forEach(row=>{
+    row.classList.toggle('playing',row.dataset.vid===mediaState.video_id&&mediaState.playing);
+  });
 }
 function mediaPlay(videoId){
   const r=mediaResultsCache.find(x=>x.video_id===videoId);
@@ -799,7 +809,6 @@ function mediaStep(dir){
 }
 function renderNowPlaying(s){
   mediaState=s;
-  if(pinPlayingToTop(s.video_id))renderMediaResults();
   // Track finished on its own -> advance to the next item in the currently displayed list (once
   // per finish; lastAutoAdvanced guards against re-triggering on every poll tick while ended stays true).
   if(s.ended&&s.video_id&&s.video_id!==lastAutoAdvanced){

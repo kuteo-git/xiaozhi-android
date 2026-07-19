@@ -118,7 +118,10 @@ class VoiceAssistant @Inject constructor(
             launch { TextCommands.flow.collect { onTextCommand(it) } }
             // A web-triggered play (Media Player tab) must win over whatever the voice pipeline is
             // doing -- same interrupt path as a wake-word barge-in.
-            launch { MediaCoordinator.webPlayRequested.collect { interruptPlayback() } }
+            launch { MediaCoordinator.webPlayRequested.collect {
+                Log.i(TAG, "webPlayRequested -> interruptPlayback t=${System.currentTimeMillis()}")
+                interruptPlayback()
+            } }
             launch { state.collect { refreshLed() } }   // LED bám theo trạng thái
             launch { state.collect { Log.i(TAG, "state -> $it isAwake=$isAwake t=${System.currentTimeMillis()}") } }
         }
@@ -209,6 +212,7 @@ class VoiceAssistant @Inject constructor(
         playback.flush()
         protocol.sendAbortSpeaking(AbortReason.NONE)
         aborted = true
+        Log.i(TAG, "interruptPlayback: flushed local buffer + sent abort t=${System.currentTimeMillis()}")
     }
 
     private fun backToWake() {
@@ -263,6 +267,7 @@ class VoiceAssistant @Inject constructor(
             "llm" -> json.optString("emotion").takeIf { it.isNotEmpty() }?.let { emotion.value = it }
             "music" -> {
                 isMusic = json.optString("state") == "start"
+                Log.i(TAG, "music state=${json.optString("state")} isMusic=$isMusic t=${System.currentTimeMillis()}")
                 MediaCoordinator.voiceMusicActive.value = isMusic  // pause the web player + reflect it there
                 refreshLed()
             }  // play_youtube -> LED nhạc
