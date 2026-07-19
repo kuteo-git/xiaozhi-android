@@ -116,12 +116,6 @@ class VoiceAssistant @Inject constructor(
             launch { runAudioLoop() }
             launch { protocol.incomingJsonFlow.collect(::handleServerMessage) }
             launch { TextCommands.flow.collect { onTextCommand(it) } }
-            // A web-triggered play (Media Player tab) must win over whatever the voice pipeline is
-            // doing -- same interrupt path as a wake-word barge-in.
-            launch { MediaCoordinator.webPlayRequested.collect {
-                Log.i(TAG, "webPlayRequested -> interruptPlayback t=${System.currentTimeMillis()}")
-                interruptPlayback()
-            } }
             launch { state.collect { refreshLed() } }   // LED bám theo trạng thái
             launch { state.collect { Log.i(TAG, "state -> $it isAwake=$isAwake t=${System.currentTimeMillis()}") } }
         }
@@ -219,7 +213,6 @@ class VoiceAssistant @Inject constructor(
         Log.i(TAG, "channel closed -> waiting for wake")
         isAwake = false
         isMusic = false
-        MediaCoordinator.voiceMusicActive.value = false
         chimeGuard(sounds.playStop(), STOP_CHIME_MARGIN_MS)   // chuông kết thúc phiên (timeout / tạm biệt) — server không gọi AI chào nữa
         state.value = VoiceState.IDLE
         wakeWord.reset()
@@ -265,13 +258,73 @@ class VoiceAssistant @Inject constructor(
                 addMessage("user", it)
             }
             "llm" -> json.optString("emotion").takeIf { it.isNotEmpty() }?.let { emotion.value = it }
-            "music" -> {
-                isMusic = json.optString("state") == "start"
-                Log.i(TAG, "music state=${json.optString("state")} isMusic=$isMusic t=${System.currentTimeMillis()}")
-                MediaCoordinator.voiceMusicActive.value = isMusic  // pause the web player + reflect it there
-                refreshLed()
-            }  // play_youtube -> LED nhạc
+            "media_queue" -> {
+                val items = json.optJSONArray("items")
+                val list = mutableListOf<MediaQueueItem>()
+                if (items != null) {
+                    for (i in 0 until items.length()) {
+                        val it = items.optJSONObject(i) ?: continue
+                        list.add(MediaQueueItem(
+                            videoId = it.optString("video_id", ""),
+                            title = it.optString("title", ""),
+                            artist = it.optString("artist", ""),
+                            thumbnail = it.optString("thumbnail", ""),
+                            duration = it.optString("duration", ""),
+                        ))
+                    }
+                }
+                MediaSessionState.updateQueue(list)
+            }
+            "media_now_playing" -> {
+                val playbackState = when (json.optString("state")) {
+                    "downloading" -> MediaPlaybackState.DOWNLOADING
+                    "playing" -> MediaPlaybackState.PLAYING
+                    else -> MediaPlaybackState.STOPPED
+                }
+                isMusic = playbackState == MediaPlaybackState.DOWNLOADING || playbackState == MediaPlaybackState.PLAYING
+                refreshLed()  // play_youtube (voice OR web-triggered) -> LED nhạc
+                val vid = json.optString("video_id", "")
+                MediaSessionState.updateNowPlaying(MediaNowPlaying(
+                    state = playbackState,
+                    videoId = vid.ifEmpty { null },
+                    title = json.optString("title", ""),
+                    artist = json.optString("artist", ""),
+                    thumbnail = json.optString("thumbnail", ""),
+                    durationS = json.optInt("duration_s", 0),
+                    positionS = json.optInt("position_s", 0),
+                ))
+            }
         }
+    }
+
+    /**
+     * Media Player tab (web control panel) commands. Plain functions, safe to call from any
+     * thread (ControlServer calls these from NanoHTTPD worker threads) -- no-ops if the voice
+     * pipeline hasn't started yet (e.g. before the first app launch reaches ChatScreen).
+     */
+    fun sendMediaPlay(videoId: String, title: String, artist: String, thumbnail: String) {
+        if (!::protocol.isInitialized || !::scope.isInitialized) return
+        scope.launch { protocol.sendMediaPlay(videoId, title, artist, thumbnail) }
+    }
+
+    fun sendMediaNext() {
+        if (!::protocol.isInitialized || !::scope.isInitialized) return
+        scope.launch { protocol.sendMediaNext() }
+    }
+
+    fun sendMediaPause() {
+        if (!::protocol.isInitialized || !::scope.isInitialized) return
+        scope.launch { protocol.sendMediaPause() }
+    }
+
+    fun sendMediaResume() {
+        if (!::protocol.isInitialized || !::scope.isInitialized) return
+        scope.launch { protocol.sendMediaResume() }
+    }
+
+    fun sendMediaStop() {
+        if (!::protocol.isInitialized || !::scope.isInitialized) return
+        scope.launch { protocol.sendMediaStop() }
     }
 
     /** Hardware button: idle -> wake; awake (listening OR speaking) -> sleep. */
