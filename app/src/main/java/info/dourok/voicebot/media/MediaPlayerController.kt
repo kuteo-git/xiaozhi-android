@@ -103,6 +103,13 @@ class MediaPlayerController @Inject constructor(
         _state.value = cur.copy(downloadState = DownloadState.ERROR, errorMessage = message, playing = false)
     }
 
+    /** Called by ControlServer's progress-polling sidecar thread while [videoId] is downloading. */
+    fun updateDownloadPercent(videoId: String, percent: Int) {
+        val cur = _state.value
+        if (cur.videoId != videoId || cur.downloadState != DownloadState.DOWNLOADING) return
+        _state.value = cur.copy(downloadPercent = percent)
+    }
+
     /** Starts playback once pytube_api has confirmed [streamUrl] (its /v3/mp3/<id> URL) is ready. */
     fun play(videoId: String, streamUrl: String, title: String, artist: String, coverUrl: String) {
         val emitted = MediaCoordinator.webPlayRequested.tryEmit(Unit)  // interrupt the voice pipeline

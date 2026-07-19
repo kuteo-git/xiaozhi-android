@@ -447,6 +447,7 @@ class ControlServer @Inject constructor(
                 mediaPlayer.markError(videoId, "pytube base URL not configured (Setup tab)")
                 return@Thread
             }
+            val progressThread = startDownloadProgressPolling(base, videoId)
             try {
                 val url = "$base/v3/video/$videoId?device=${deviceMac()}"
                 val req = Request.Builder().url(url).get().build()
@@ -466,8 +467,41 @@ class ControlServer @Inject constructor(
                 }
             } catch (e: Exception) {
                 mediaPlayer.markError(videoId, e.message ?: "network error")
+            } finally {
+                progressThread.interrupt()
             }
         }.start()
+    }
+
+    /**
+     * Polls pytube_api's /v3/download_progress/<id> on a separate thread while the blocking
+     * /v3/video/<id> download call (above) is in flight, so the UI can show a real percentage
+     * instead of just an indeterminate spinner. pytube_api runs threaded=True, so this concurrent
+     * request doesn't block the main download call. Best-effort: network hiccups are ignored, the
+     * next tick just retries: this thread only ever improves the UI, never gates playback.
+     */
+    private fun startDownloadProgressPolling(base: String, videoId: String): Thread {
+        val t = Thread {
+            try {
+                while (!Thread.currentThread().isInterrupted) {
+                    Thread.sleep(700)
+                    val req = Request.Builder().url("$base/v3/download_progress/$videoId").get().build()
+                    http.newCall(req).execute().use { resp ->
+                        val percent = try {
+                            JSONObject(resp.body?.string().orEmpty()).optInt("percent", -1)
+                        } catch (e: Exception) { -1 }
+                        if (percent >= 0) mediaPlayer.updateDownloadPercent(videoId, percent)
+                    }
+                }
+            } catch (e: InterruptedException) {
+                // normal shutdown once the main download call (above) finishes
+            } catch (e: Exception) {
+                // best-effort polling -- ignore and let the next tick retry
+            }
+        }
+        t.isDaemon = true
+        t.start()
+        return t
     }
 
     private fun buildMediaState(): String {
@@ -484,6 +518,7 @@ class ControlServer @Inject constructor(
             .put("position_ms", s.positionMs)
             .put("duration_ms", s.durationMs)
             .put("download_state", s.downloadState.name.lowercase())
+            .put("download_percent", s.downloadPercent)
             .put("error_message", s.errorMessage)
             .put("ended", s.ended)
             .put("voice_active", voiceActive)

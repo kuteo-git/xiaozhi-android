@@ -17,4 +17,7 @@ data class MediaPlayerState(
     /** True once the current track finishes playing on its own (not paused/stopped by the user).
      *  Reset by the next markDownloading()/play() call. Drives auto-advance in control.html. */
     val ended: Boolean = false,
+    /** 0-100 while downloadState==DOWNLOADING (from pytube_api's /v3/download_progress), -1 if
+     *  unknown (e.g. cached file, or pytube_api hasn't reported yet). */
+    val downloadPercent: Int = -1,
 )

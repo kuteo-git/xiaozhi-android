@@ -247,8 +247,12 @@ select:focus{border-color:rgba(232,69,60,.45);}
 .li-play-wrap{position:relative;flex-shrink:0;width:36px;height:36px;}
 .li-ring{position:absolute;inset:-4px;width:44px;height:44px;opacity:0;pointer-events:none;
   transform:rotate(-90deg);transition:opacity .15s;}
-.li-ring circle{fill:none;stroke:var(--a1);stroke-width:2.5;stroke-linecap:round;stroke-dasharray:32 75;}
+.li-ring circle{fill:none;stroke:var(--a1);stroke-width:2.5;stroke-linecap:round;stroke-dasharray:32 75;
+  transition:stroke-dashoffset .3s linear;}
 .li-play-wrap.downloading .li-ring{opacity:1;animation:li-spin 1s linear infinite;}
+/* Real percentage known (pytube_api's /v3/download_progress) -> a proper filling ring instead of
+   the indeterminate spinning arc; dasharray/dashoffset set inline from JS (applyMediaButtonStates). */
+.li-play-wrap.downloading.determinate .li-ring{animation:none;}
 .li-play{width:36px;height:36px;border-radius:50%;border:0;background:var(--grad);color:#fff;
   font-size:14px;cursor:pointer;box-shadow:0 3px 10px rgba(232,69,60,.3);}
 .li-play-wrap.downloading .li-play{background:var(--card2);color:var(--a1);box-shadow:none;}
@@ -780,11 +784,23 @@ function mediaItemTap(videoId){
   if(videoId===mediaState.video_id&&mediaState.download_state==='ready')mediaToggle();
   else mediaPlay(videoId);
 }
+const LI_RING_CIRC=2*Math.PI*17;  // matches the r=17 <circle> in the .li-ring SVG markup
 function applyMediaButtonStates(){
   document.querySelectorAll('.li-play-wrap').forEach(w=>{
     const active=w.dataset.vid===mediaState.video_id;
-    w.classList.toggle('downloading',active&&mediaState.download_state==='downloading');
+    const downloading=active&&mediaState.download_state==='downloading';
+    const pct=mediaState.download_percent;
+    const determinate=downloading&&pct>=0&&pct<=100;
+    w.classList.toggle('downloading',downloading);
+    w.classList.toggle('determinate',determinate);
     w.classList.toggle('error',active&&mediaState.download_state==='error');
+    const circle=w.querySelector('.li-ring circle');
+    if(determinate){
+      circle.style.strokeDasharray=LI_RING_CIRC+' '+LI_RING_CIRC;
+      circle.style.strokeDashoffset=String(LI_RING_CIRC*(1-pct/100));
+    }else{
+      circle.style.strokeDasharray='';circle.style.strokeDashoffset='';
+    }
     w.querySelector('.li-play').textContent=(active&&mediaState.playing)?'⏸':'▶';
   });
   document.querySelectorAll('.list-item').forEach(row=>{
