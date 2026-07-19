@@ -231,6 +231,34 @@ select:focus{border-color:rgba(232,69,60,.45);}
   color:#fff;font-size:17px;cursor:pointer;box-shadow:0 4px 14px rgba(232,69,60,.35);
   transition:transform .1s,box-shadow .1s;display:grid;place-items:center;}
 .inbar button:active{transform:scale(.9);box-shadow:0 2px 8px rgba(232,69,60,.2);}
+
+/* ── MEDIA PLAYER ──────────────────────────────── */
+.list-item{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line);}
+.list-item:last-child{border-bottom:0;}
+.li-cover{width:44px;height:44px;border-radius:8px;object-fit:cover;background:var(--card2);flex-shrink:0;}
+.li-info{flex:1;min-width:0;}
+.li-title{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.li-sub{font-size:11.5px;color:var(--mut);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.li-play{flex-shrink:0;width:36px;height:36px;border-radius:50%;border:0;background:var(--grad);color:#fff;
+  font-size:14px;cursor:pointer;box-shadow:0 3px 10px rgba(232,69,60,.3);}
+.li-play.downloading{background:var(--card2);color:var(--a1);border:2px solid var(--line);
+  border-top-color:var(--a1);animation:li-spin 0.8s linear infinite;box-shadow:none;}
+.li-play.error{background:rgba(239,68,68,.12);color:var(--err);border:1px solid rgba(239,68,68,.3);box-shadow:none;}
+@keyframes li-spin{to{transform:rotate(360deg);}}
+
+#pmedia{position:relative;}
+.now-playing{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:10px;
+  padding:10px 13px;background:var(--card);border-top:1px solid var(--line);
+  backdrop-filter:blur(12px);}
+.now-playing[hidden]{display:none;}
+.np-cover{width:40px;height:40px;border-radius:8px;object-fit:cover;background:var(--card2);flex-shrink:0;}
+.np-info{flex:1;min-width:0;}
+.np-title{font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.np-artist{font-size:10.5px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.np-info input[type=range]{width:100%;margin-top:3px;height:3px;}
+.np-ctrl{display:flex;align-items:center;gap:2px;flex-shrink:0;}
+.np-ctrl button{border:0;background:none;color:var(--fg);font-size:19px;padding:5px 6px;cursor:pointer;}
+.np-ctrl button:disabled{opacity:.3;}
 </style>
 </head>
 <body>
@@ -251,6 +279,7 @@ select:focus{border-color:rgba(232,69,60,.45);}
 <div class="seg">
   <button id="tset" class="on" onclick="tab('set')"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="10" cy="10" r="3"/><circle cx="10" cy="10" r="1" fill="currentColor" stroke="none"/><line x1="10" y1="2" x2="10" y2="4.2"/><line x1="10" y1="15.8" x2="10" y2="18"/><line x1="2" y1="10" x2="4.2" y2="10"/><line x1="15.8" y1="10" x2="18" y2="10"/><line x1="4.6" y1="4.6" x2="6.1" y2="6.1"/><line x1="13.9" y1="13.9" x2="15.4" y2="15.4"/><line x1="15.4" y1="4.6" x2="13.9" y2="6.1"/><line x1="6.1" y1="13.9" x2="4.6" y2="15.4"/></svg>Settings</button>
   <button id="tsetup" onclick="tab('setup')"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M10 3v4M10 13v4M3 10h4M13 10h4"/><circle cx="10" cy="10" r="2.2"/></svg>Setup</button>
+  <button id="tmedia" onclick="tab('media')"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M8 3v9.2a3 3 0 101.5 2.6V6.9l6-1.2v6.5a3 3 0 101.5 2.6V3l-9 1.8V3z"/></svg>Media Player</button>
 </div>
 
 <div class="panes">
@@ -330,6 +359,8 @@ select:focus{border-color:rgba(232,69,60,.45);}
       <div class="ch"><span class="icon-badge ib-srv"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="7"/><path d="M3 10h14M10 3c2.5 2 2.5 12 0 14M10 3c-2.5 2-2.5 12 0 14"/></svg></span><h2>Server</h2></div>
       <div class="row"><label>OTA URL</label><input class="codein" id="ota" placeholder="http://host:8003/xiaozhi/ota/"></div>
       <div class="row" style="gap:8px"><button class="btn rec" style="flex:1;width:auto" onclick="connectServer()">Connect</button><span class="hint" id="srvStat" style="flex:1"></span></div>
+      <div class="row"><label>Pytube API</label><input class="codein" id="pytubeUrl" placeholder="http://host:114" onchange="set('pytube_base_url',this.value)"></div>
+      <div class="hint">Backend tìm/tải bài hát cho tab Media Player.</div>
     </div>
 
     <div class="card">
@@ -397,6 +428,28 @@ select:focus{border-color:rgba(232,69,60,.45);}
     </div>
   </div>
 </div>
+<!-- MEDIA PLAYER -->
+<div id="pmedia" class="page">
+  <div class="settings" style="padding-bottom:100px">
+    <div class="card">
+      <div class="row" style="margin:0"><input class="codein" id="mediaSearch" placeholder="🔍 Tìm bài hát…" oninput="onMediaSearchInput()" style="flex:1"></div>
+      <div id="mediaResults" style="margin-top:8px"></div>
+    </div>
+  </div>
+  <div id="nowPlaying" class="now-playing" hidden>
+    <img id="npCover" class="np-cover" src="" alt="">
+    <div class="np-info">
+      <div class="np-title" id="npTitle"></div>
+      <div class="np-artist" id="npArtist"></div>
+      <input type="range" id="npSeek" min="0" max="0" value="0">
+    </div>
+    <div class="np-ctrl">
+      <button id="npPrev" onclick="mediaPrev()">⏮</button>
+      <button id="npPlay" onclick="mediaToggle()">▶</button>
+      <button id="npNext" onclick="mediaNext()">⏭</button>
+    </div>
+  </div>
+</div>
 </div><!--panes-->
 </div><!--app-->
 
@@ -416,7 +469,8 @@ select:focus{border-color:rgba(232,69,60,.45);}
 const $=id=>document.getElementById(id);
 const set=(k,v)=>fetch(`/api/set?key=${k}&value=${encodeURIComponent(v)}`,{method:'POST'});
 function restart(){if(confirm('Restart app?'))fetch('/api/restart',{method:'POST'});}
-function tab(t){['set','setup'].forEach(x=>{$('p'+x).classList.toggle('on',x===t);$('t'+x).classList.toggle('on',x===t);});}
+function tab(t){['set','setup','media'].forEach(x=>{$('p'+x).classList.toggle('on',x===t);$('t'+x).classList.toggle('on',x===t);});
+  if(t==='media')mediaPollStart();else mediaPollStop();}
 function openChat(){$('chatDrawer').classList.add('open');$('chatBackdrop').classList.add('open');document.body.classList.add('chat-open');setTimeout(()=>{const i=$('msg');if(i)i.focus();},60);}
 function closeChat(){$('chatDrawer').classList.remove('open');$('chatBackdrop').classList.remove('open');document.body.classList.remove('chat-open');}
 function toggleChat(){$('chatDrawer').classList.contains('open')?closeChat():openChat();}
@@ -491,6 +545,7 @@ function render(s){
     if(s.llm_base_url)$('burl').value=s.llm_base_url;
     if(s.llm_model)$('lmodel').innerHTML=`<option value="${s.llm_model}">${s.llm_model}</option>`;
     if(s.llm_api_key_set)$('akey').placeholder='•••• (đã lưu — để trống nếu giữ nguyên)';
+    $('pytubeUrl').value=s.pytube_base_url||'';
     $('haUrl').value=s.ha_url||'';
     if(s.ha_token_set)$('haTok').placeholder='•••• (đã lưu)';
     renderHaSaved(s.ha_devices||'');
@@ -652,6 +707,93 @@ function _haLines(){return JSON.parse($('haSaved').dataset.lines||'[]');}
 async function _saveHaLines(lines){await fetch(`/api/set?key=ha_devices&value=${encodeURIComponent(lines.join('\n'))}`,{method:'POST'});renderHaSaved(lines.join('\n'));}
 function editHaLine(i,v){const l=_haLines();l[i]=v.trim();_saveHaLines(l);}
 function removeHaLine(i){const l=_haLines();l.splice(i,1);_saveHaLines(l);}
+
+// ── Media Player ──────────────────────────────────
+let mediaResultsCache=[];
+let mediaSearchTimer=null;
+let mediaState={playing:false,video_id:null,download_state:'idle'};
+let mediaPollTimer=null;
+let npSeekDragging=false;
+
+function onMediaSearchInput(){
+  clearTimeout(mediaSearchTimer);
+  const q=$('mediaSearch').value.trim();
+  mediaSearchTimer=setTimeout(()=>mediaSearch(q),400);
+}
+async function mediaSearch(q){
+  if(!q){mediaResultsCache=[];renderMediaResults();return;}
+  try{
+    const j=await(await fetch('/api/media/search?q='+encodeURIComponent(q))).json();
+    mediaResultsCache=j.ok?j.results:[];
+    renderMediaResults(j.ok?null:j.error);
+  }catch(e){mediaResultsCache=[];renderMediaResults('Lỗi tìm kiếm');}
+}
+function renderMediaResults(err){
+  const el=$('mediaResults');
+  if(err){el.innerHTML=`<div class="empty">✕ ${err}</div>`;return;}
+  if(!mediaResultsCache.length){el.innerHTML='<div class="empty">🎵 Tìm bài hát để bắt đầu</div>';return;}
+  el.innerHTML=mediaResultsCache.map(r=>`
+    <div class="list-item">
+      <img class="li-cover" src="${r.thumbnail}" alt="">
+      <div class="li-info">
+        <div class="li-title">${r.title.replace(/</g,'&lt;')}</div>
+        <div class="li-sub">${r.artist}${r.duration?(' · '+r.duration):''}</div>
+      </div>
+      <button class="li-play" data-vid="${r.video_id}" onclick="mediaPlay('${r.video_id}')">▶</button>
+    </div>`).join('');
+  applyMediaButtonStates();
+}
+function applyMediaButtonStates(){
+  document.querySelectorAll('.li-play').forEach(b=>{
+    const active=b.dataset.vid===mediaState.video_id;
+    b.classList.toggle('downloading',active&&mediaState.download_state==='downloading');
+    b.classList.toggle('error',active&&mediaState.download_state==='error');
+  });
+}
+function mediaPlay(videoId){
+  const r=mediaResultsCache.find(x=>x.video_id===videoId);
+  if(!r)return;
+  const p=`video_id=${encodeURIComponent(videoId)}&title=${encodeURIComponent(r.title)}&artist=${encodeURIComponent(r.artist)}&thumbnail=${encodeURIComponent(r.thumbnailUrl||r.thumbnail||'')}`;
+  fetch('/api/media/play?'+p,{method:'POST'});
+}
+function mediaToggle(){fetch(mediaState.playing?'/api/media/pause':'/api/media/resume',{method:'POST'});}
+function mediaPrev(){mediaStep(-1);}
+function mediaNext(){mediaStep(1);}
+function mediaStep(dir){
+  const i=mediaResultsCache.findIndex(x=>x.video_id===mediaState.video_id);
+  if(i<0)return;
+  const j=i+dir;
+  if(j<0||j>=mediaResultsCache.length)return;
+  mediaPlay(mediaResultsCache[j].video_id);
+}
+function renderNowPlaying(s){
+  mediaState=s;
+  const np=$('nowPlaying');
+  if(!s.video_id){np.hidden=true;applyMediaButtonStates();return;}
+  np.hidden=false;
+  $('npCover').src=s.cover_url||'';
+  $('npTitle').textContent=s.title||'';
+  $('npArtist').textContent=s.artist||'';
+  $('npPlay').textContent=s.playing?'⏸':'▶';
+  if(!npSeekDragging){
+    $('npSeek').max=s.duration_ms||0;
+    $('npSeek').value=s.position_ms||0;
+  }
+  const i=mediaResultsCache.findIndex(x=>x.video_id===s.video_id);
+  $('npPrev').disabled=(i<=0);
+  $('npNext').disabled=(i<0||i>=mediaResultsCache.length-1);
+  applyMediaButtonStates();
+}
+$('npSeek').addEventListener('pointerdown',()=>npSeekDragging=true);
+$('npSeek').addEventListener('change',e=>{
+  fetch('/api/media/seek?position_ms='+Math.round(e.target.value),{method:'POST'});
+  npSeekDragging=false;
+});
+function mediaPollStart(){if(mediaPollTimer)return;mediaPollTick();mediaPollTimer=setInterval(mediaPollTick,1000);}
+function mediaPollStop(){clearInterval(mediaPollTimer);mediaPollTimer=null;}
+async function mediaPollTick(){
+  try{renderNowPlaying(await(await fetch('/api/media/state')).json());}catch(e){}
+}
 
 poll();setInterval(poll,1500);
 // loadVoices() now runs from render() once tts_host arrives (de-hardcoded server host).
