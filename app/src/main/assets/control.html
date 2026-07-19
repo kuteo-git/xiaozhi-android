@@ -233,7 +233,15 @@ select:focus{border-color:rgba(232,69,60,.45);}
 .inbar button:active{transform:scale(.9);box-shadow:0 2px 8px rgba(232,69,60,.2);}
 
 /* ── MEDIA PLAYER ──────────────────────────────── */
-.media-scroll{flex:1;overflow-y:auto;min-height:0;}
+/* Pane is a column: head (player + search) pinned, list scrolls under it. */
+.media-head{flex-shrink:0;}
+.media-scroll{flex:1;overflow-y:auto;min-height:0;padding:0 13px 24px;}
+.media-search{position:relative;display:flex;align-items:center;padding:10px 13px;}
+.media-search input{flex:1;padding-left:32px;}
+.ms-icon{position:absolute;left:22px;width:15px;height:15px;color:var(--mut);pointer-events:none;}
+.ms-spin{position:absolute;right:22px;width:15px;height:15px;color:var(--a1);pointer-events:none;
+  animation:li-spin 0.9s linear infinite;}
+.ms-spin[hidden]{display:none;}
 .list-item{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line);
   border-radius:8px;transition:background .15s;}
 .list-item:last-child{border-bottom:0;}
@@ -254,13 +262,14 @@ select:focus{border-color:rgba(232,69,60,.45);}
    the indeterminate spinning arc; dasharray/dashoffset set inline from JS (applyMediaButtonStates). */
 .li-play-wrap.downloading.determinate .li-ring{animation:none;}
 .li-play{width:36px;height:36px;border-radius:50%;border:0;background:var(--grad);color:#fff;
-  font-size:14px;cursor:pointer;box-shadow:0 3px 10px rgba(232,69,60,.3);}
+  cursor:pointer;box-shadow:0 3px 10px rgba(232,69,60,.3);display:grid;place-items:center;padding:0;}
+.li-play svg{width:15px;height:15px;}
 .li-play-wrap.downloading .li-play{background:var(--card2);color:var(--a1);box-shadow:none;}
 .li-play-wrap.error .li-play{background:rgba(239,68,68,.12);color:var(--err);border:1px solid rgba(239,68,68,.3);box-shadow:none;}
 @keyframes li-spin{to{transform:rotate(270deg);}}
 
 .now-playing{display:flex;align-items:center;gap:10px;flex-shrink:0;
-  padding:10px 13px;background:var(--card);border-top:1px solid var(--line);}
+  padding:10px 13px;background:var(--card);border-bottom:1px solid var(--line);}
 .now-playing[hidden]{display:none;}
 .np-cover{width:40px;height:40px;border-radius:8px;object-fit:cover;background:var(--card2);flex-shrink:0;}
 .np-info{flex:1;min-width:0;}
@@ -271,8 +280,15 @@ select:focus{border-color:rgba(232,69,60,.45);}
 .np-time:last-child{text-align:right;}
 .np-info input[type=range]{flex:1;min-width:0;height:3px;}
 .np-ctrl{display:flex;align-items:center;gap:2px;flex-shrink:0;}
-.np-ctrl button{border:0;background:none;color:var(--fg);font-size:19px;padding:5px 6px;cursor:pointer;}
+.np-ctrl button{border:0;background:none;color:var(--fg);padding:5px 6px;cursor:pointer;
+  display:grid;place-items:center;}
+.np-ctrl button svg{width:21px;height:21px;}
 .np-ctrl button:disabled{opacity:.3;}
+
+/* Search / empty states in the list area */
+.media-empty{margin:28px auto;color:var(--mut);text-align:center;font-size:13px;line-height:1.8;
+  display:flex;flex-direction:column;align-items:center;gap:8px;}
+.media-empty svg{width:26px;height:26px;opacity:.55;}
 </style>
 </head>
 <body>
@@ -444,29 +460,32 @@ select:focus{border-color:rgba(232,69,60,.45);}
 </div>
 <!-- MEDIA PLAYER -->
 <div id="pmedia" class="page">
-  <div id="mediaScroll" class="media-scroll">
-    <div class="settings">
-      <div class="card">
-        <div class="row" style="margin:0"><input class="codein" id="mediaSearch" placeholder="🔍 Tìm bài hát…" oninput="onMediaSearchInput()" style="flex:1"></div>
-        <div id="mediaResults" style="margin-top:8px"></div>
+  <!-- Player + search stay pinned; only the song list below them scrolls. -->
+  <div class="media-head">
+    <div id="nowPlaying" class="now-playing" hidden>
+      <img id="npCover" class="np-cover" src="" alt="">
+      <div class="np-info">
+        <div class="np-title" id="npTitle"></div>
+        <div class="np-artist" id="npArtist"></div>
+        <div class="np-seek-row">
+          <span class="np-time" id="npCur">0:00</span>
+          <input type="range" id="npSeek" min="0" max="0" value="0">
+          <span class="np-time" id="npDur">0:00</span>
+        </div>
       </div>
+      <div class="np-ctrl">
+        <button id="npPlay" onclick="mediaToggle()" aria-label="Play/Pause"></button>
+        <button id="npNext" onclick="mediaNext()" aria-label="Next"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg></button>
+      </div>
+    </div>
+    <div class="media-search">
+      <svg class="ms-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>
+      <input class="codein" id="mediaSearch" placeholder="Tìm bài hát…" oninput="onMediaSearchInput()">
+      <svg class="ms-spin" id="mediaSpin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" hidden><circle cx="12" cy="12" r="9" stroke-dasharray="14 42"/></svg>
     </div>
   </div>
-  <div id="nowPlaying" class="now-playing" hidden>
-    <img id="npCover" class="np-cover" src="" alt="">
-    <div class="np-info">
-      <div class="np-title" id="npTitle"></div>
-      <div class="np-artist" id="npArtist"></div>
-      <div class="np-seek-row">
-        <span class="np-time" id="npCur">0:00</span>
-        <input type="range" id="npSeek" min="0" max="0" value="0">
-        <span class="np-time" id="npDur">0:00</span>
-      </div>
-    </div>
-    <div class="np-ctrl">
-      <button id="npPlay" onclick="mediaToggle()">▶</button>
-      <button id="npNext" onclick="mediaNext()">⏭</button>
-    </div>
+  <div id="mediaScroll" class="media-scroll">
+    <div id="mediaResults"></div>
   </div>
 </div>
 </div><!--panes-->
@@ -759,10 +778,18 @@ function restoreMediaSearchState(){
 function onMediaSearchInput(){
   clearTimeout(mediaSearchTimer);
   const q=$('mediaSearch').value.trim();
+  // Show the spinner during the debounce too, so typing feels responsive instead of dead for 400ms.
+  setSearching(!!q);
   mediaSearchTimer=setTimeout(()=>mediaSearch(q),400);
 }
+function setSearching(on){
+  $('mediaSpin').hidden=!on;
+  if(on&&!mediaResultsCache.length){
+    $('mediaResults').innerHTML=`<div class="media-empty">${SVG_NOTE}<span>Đang tìm…</span></div>`;
+  }
+}
 async function mediaSearch(q){
-  if(!q){mediaSearchResultsCache=[];mediaResultsCache=[];lastDisplayedSig=JSON.stringify(mediaResultsCache);renderMediaResults();saveMediaSearchState();return;}
+  if(!q){setSearching(false);mediaSearchResultsCache=[];mediaResultsCache=[];lastDisplayedSig=JSON.stringify(mediaResultsCache);renderMediaResults();saveMediaSearchState();return;}
   try{
     const j=await(await fetch('/api/media/search?q='+encodeURIComponent(q))).json();
     mediaSearchResultsCache=j.ok?j.results:[];
@@ -773,11 +800,12 @@ async function mediaSearch(q){
     renderMediaResults(j.ok?null:j.error);
     saveMediaSearchState();
   }catch(e){mediaSearchResultsCache=[];mediaResultsCache=[];renderMediaResults('Lỗi tìm kiếm');}
+  finally{setSearching(false);}
 }
 function renderMediaResults(err){
   const el=$('mediaResults');
-  if(err){el.innerHTML=`<div class="empty">✕ ${err}</div>`;return;}
-  if(!mediaResultsCache.length){el.innerHTML='<div class="empty">🎵 Tìm bài hát để bắt đầu</div>';return;}
+  if(err){el.innerHTML=`<div class="media-empty">${SVG_WARN}<span>${err}</span></div>`;return;}
+  if(!mediaResultsCache.length){el.innerHTML=`<div class="media-empty">${SVG_NOTE}<span>Tìm bài hát để bắt đầu</span></div>`;return;}
   el.innerHTML=mediaResultsCache.map(r=>`
     <div class="list-item" data-vid="${r.video_id}">
       <img class="li-cover" src="${r.thumbnail}" alt="">
@@ -787,7 +815,7 @@ function renderMediaResults(err){
       </div>
       <div class="li-play-wrap" data-vid="${r.video_id}">
         <svg class="li-ring" viewBox="0 0 40 40"><circle cx="20" cy="20" r="17"/></svg>
-        <button class="li-play" onclick="mediaItemTap('${r.video_id}')">▶</button>
+        <button class="li-play" onclick="mediaItemTap('${r.video_id}')">${SVG_PLAY}</button>
       </div>
     </div>`).join('');
   applyMediaButtonStates();
@@ -798,6 +826,11 @@ function mediaItemTap(videoId){
   if(videoId===mediaState.video_id&&mediaState.state!=='stopped'&&mediaState.state!=='idle')mediaToggle();
   else mediaPlay(videoId);
 }
+const SVG_PLAY='<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>';
+const SVG_PAUSE='<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6.5 5h3.5v14H6.5zM14 5h3.5v14H14z"/></svg>';
+const SVG_RETRY='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M19 12a7 7 0 11-2-4.9"/><path d="M19 4v4h-4"/></svg>';
+const SVG_NOTE='<svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 18V6.5l10-2V16"/><circle cx="6.5" cy="18" r="2.6"/><circle cx="16.5" cy="16" r="2.6"/></svg>';
+const SVG_WARN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5v.01"/></svg>';
 const LI_RING_CIRC=2*Math.PI*17;  // matches the r=17 <circle> in the .li-ring SVG markup
 function applyMediaButtonStates(){
   document.querySelectorAll('.li-play-wrap').forEach(w=>{
@@ -814,7 +847,10 @@ function applyMediaButtonStates(){
     }else{
       circle.style.strokeDasharray='';circle.style.strokeDashoffset='';
     }
-    w.querySelector('.li-play').textContent=(active&&mediaState.state==='playing')?'⏸':'▶';
+    const btn=w.querySelector('.li-play');
+    const want=(active&&mediaState.state==='error')?SVG_RETRY
+              :(active&&mediaState.state==='playing')?SVG_PAUSE:SVG_PLAY;
+    if(btn.dataset.icon!==want){btn.dataset.icon=want;btn.innerHTML=want;}
   });
   document.querySelectorAll('.list-item').forEach(row=>{
     row.classList.toggle('playing',row.dataset.vid===mediaState.video_id&&mediaState.state==='playing');
@@ -863,7 +899,8 @@ function renderNowPlaying(s){
   $('npCover').src=s.cover_url||'';
   $('npTitle').textContent=s.title||'';
   $('npArtist').textContent=s.artist||'';
-  $('npPlay').textContent=s.state==='playing'?'⏸':'▶';
+  const npWant=s.state==='playing'?SVG_PAUSE:SVG_PLAY;
+  if($('npPlay').dataset.icon!==npWant){$('npPlay').dataset.icon=npWant;$('npPlay').innerHTML=npWant;}
   if(!npSeekDragging){
     $('npSeek').max=s.duration_s||0;
     $('npSeek').value=s.position_s||0;
