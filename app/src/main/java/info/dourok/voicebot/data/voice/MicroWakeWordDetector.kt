@@ -34,11 +34,17 @@ class MicroWakeWordDetector(context: Context) : WakeWordDetector {
             if (e.processAudioSamples(shorts.copyOfRange(i, i + n), n)) fired = true
             i += n
         }
-        return fired
+        // This engine's cutoff is baked into its .so, not adjustable, so unlike Snowboy/Mai-ơi
+        // there's no threshold to raise while our own speaker is playing (no AEC on this device --
+        // see MaiOiWakeWordDetector). Keep feeding the engine so its internal streaming state stays
+        // warm (avoids a cold-start transient when strict drops back to false), but suppress firing.
+        return fired && !strict
     }
 
     override fun reset() { engine?.reset() }
-    override fun setStrict(strict: Boolean) { /* microWakeWord has no per-state sensitivity here */ }
+
+    private var strict = false
+    override fun setStrict(strict: Boolean) { this.strict = strict }
 
     companion object { private const val TAG = "MicroWakeWord" }
 }

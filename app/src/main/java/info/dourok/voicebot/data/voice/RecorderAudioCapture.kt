@@ -23,4 +23,8 @@ class RecorderAudioCapture(
         recorder?.stopRecording()
         recorder = null
     }
+
+    override fun drainBuffered() {
+        recorder?.drainBuffered()
+    }
 }

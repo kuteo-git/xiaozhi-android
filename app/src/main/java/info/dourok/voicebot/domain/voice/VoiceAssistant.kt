@@ -87,9 +87,18 @@ class VoiceAssistant @Inject constructor(
     @Volatile private var autoTurns = 0
     private val MAX_AUTO_TURNS = 8
     private fun chimeGuard(durationMs: Long, marginMs: Long = WAKE_CHIME_MARGIN_MS) {
-        val until = System.currentTimeMillis() + durationMs + marginMs
+        val now = System.currentTimeMillis()
+        val until = now + durationMs + marginMs
         suppressWakeUntil = until
-        Log.i(TAG, "chimeGuard: duration=$durationMs margin=$marginMs until=$until")
+        // Our own wake/stop chime plays on its own AudioTrack (AudioTrackSoundEffects), entirely
+        // outside the playback/TTS pipeline that normally drives micGateUntil -- so without this,
+        // nothing mutes the STT mic stream while the chime itself is still audible. No AEC on this
+        // device means the mic genuinely picks up the chime's own tail as if it were the user's
+        // command: a real captured clip (2026-07-23, rms 0.13, sharp attack-decay burst matching the
+        // chime's envelope, not speech) got sent to Whisper and hallucinated a fluent nonsense
+        // sentence from it. Gate the mic the same way TTS/music playback already does.
+        micGateUntil = maxOf(micGateUntil, now + durationMs + MIC_GATE_TAIL_MS)
+        Log.i(TAG, "chimeGuard: duration=$durationMs margin=$marginMs until=$until micGateUntil=$micGateUntil")
     }
 
     private lateinit var protocol: Protocol
@@ -114,6 +123,13 @@ class VoiceAssistant @Inject constructor(
                 }
             }
             // Do NOT open the channel yet -> connect only on wake (avoids idle timeout).
+            // 2026-07-23: tried launch(Dispatchers.Default) here to get wake-word ML inference off
+            // the UI thread (viewModelScope is Main.immediate). Reverted -- on the R1's weak CPU,
+            // the extra scheduling contention against the audio-playback pipeline (Dispatchers.IO)
+            // correlated with a real AudioTrack underrun/restart, which in turn hung
+            // waitForPlaybackCompletion() forever (LED stuck on "speaking", conversation never
+            // returns to listening). The theoretical UI-thread cost was never proven to cause
+            // visible harm; this regression was. Back on the parent (Main.immediate) scope.
             launch { runAudioLoop() }
             launch { protocol.incomingJsonFlow.collect(::handleServerMessage) }
             launch { TextCommands.flow.collect { onTextCommand(it) } }
@@ -196,6 +212,10 @@ class VoiceAssistant @Inject constructor(
             isAwake = true
             if (!protocol.isAudioChannelOpened()) protocol.openAudioChannel()
         }
+        // openAudioChannel() suspends on the connect+hello handshake; the mic keeps buffering the
+        // whole time (see AudioRecorder's 50-frame channel), so what's queued right now is stale
+        // audio from before the connection was ready, not the command the user is about to say.
+        capture.drainBuffered()
         protocol.sendStartListening(ListeningMode.AUTO_STOP)
         startAgc()
         state.value = VoiceState.LISTENING
@@ -353,6 +373,7 @@ class VoiceAssistant @Inject constructor(
             if (!isAwake) {
                 chimeGuard(sounds.playWake())
                 if (!protocol.isAudioChannelOpened()) protocol.openAudioChannel()
+                capture.drainBuffered()
                 protocol.sendStartListening(ListeningMode.AUTO_STOP)
                 isAwake = true
                 startAgc()

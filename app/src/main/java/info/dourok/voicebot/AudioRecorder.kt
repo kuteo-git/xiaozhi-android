@@ -116,6 +116,13 @@ class AudioRecorder(
         return audioChannel.receiveAsFlow()
     }
 
+    /** Discard whatever's queued (e.g. audio buffered while a connect was blocking the collector). */
+    fun drainBuffered() {
+        var dropped = 0
+        while (audioChannel.tryReceive().isSuccess) dropped++
+        if (dropped > 0) Log.i(TAG, "drainBuffered: dropped $dropped stale frame(s)")
+    }
+
     fun stopRecording() {
         audioRecord?.stop()
         audioRecord?.release()

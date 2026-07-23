@@ -9,4 +9,7 @@ interface AudioCapture {
 
     /** Stop recording and release the microphone. */
     fun stop()
+
+    /** Discard whatever's already buffered (e.g. audio captured while a connect was in flight). */
+    fun drainBuffered()
 }
