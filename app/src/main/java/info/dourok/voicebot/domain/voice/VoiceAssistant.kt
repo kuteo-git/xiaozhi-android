@@ -163,6 +163,7 @@ class VoiceAssistant @Inject constructor(
     private suspend fun onTextCommand(text: String) {
         if (text.isBlank()) return
         ConversationLog.add("user", text)
+        AppLog.i("Nhận lệnh dạng chữ: \"$text\"")
         if (!protocol.isAudioChannelOpened()) protocol.openAudioChannel()
         isAwake = true
         autoTurns = 0
@@ -171,11 +172,13 @@ class VoiceAssistant @Inject constructor(
         // dropped with no error at all. Trust the send result instead -- reconnect and retry once.
         if (!protocol.sendTextQuery(text)) {
             Log.w(TAG, "sendTextQuery dropped (stale channel) -> reconnect + retry once")
+            AppLog.w("Kênh đã chết, nối lại rồi gửi lại lệnh")
             protocol.closeAudioChannel()
             if (protocol.openAudioChannel()) {
                 if (!protocol.sendTextQuery(text)) Log.e(TAG, "sendTextQuery failed after reconnect")
             } else {
                 Log.e(TAG, "reconnect failed, query lost: $text")
+                AppLog.e("Nối lại thất bại, mất lệnh: \"$text\"")
             }
         }
         state.value = VoiceState.SPEAKING
@@ -216,6 +219,7 @@ class VoiceAssistant @Inject constructor(
 
     private suspend fun onWake() {
         Log.i(TAG, ">>> wake word detected: isAwake=$isAwake state=${state.value} t=${System.currentTimeMillis()}")
+        AppLog.i(if (isAwake) "Nghe từ khóa (đang thức) -> ngắt lời" else "Nghe từ khóa -> bắt đầu nghe")
         autoTurns = 0
         chimeGuard(sounds.playWake())
         if (isAwake) {
@@ -250,10 +254,12 @@ class VoiceAssistant @Inject constructor(
         protocol.sendAbortSpeaking(AbortReason.NONE)
         aborted = true
         Log.i(TAG, "interruptPlayback: flushed local buffer + sent abort t=${System.currentTimeMillis()}")
+        AppLog.i("Người dùng ngắt lời robot")
     }
 
     private fun backToWake() {
         Log.i(TAG, "channel closed -> waiting for wake")
+        AppLog.i("Kết thúc phiên, về chờ từ khóa")
         isAwake = false
         isMusic = false
         chimeGuard(sounds.playStop(), STOP_CHIME_MARGIN_MS)   // chuông kết thúc phiên (timeout / tạm biệt) — server không gọi AI chào nữa

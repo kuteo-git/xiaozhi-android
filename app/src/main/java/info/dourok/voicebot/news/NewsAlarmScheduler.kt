@@ -8,23 +8,19 @@ import android.os.Build
 import android.util.Log
 import info.dourok.voicebot.data.Settings
 import info.dourok.voicebot.data.model.fromJsonToDeviceInfo
+import info.dourok.voicebot.domain.voice.AppLog
 import java.util.Calendar
 
 /**
  * Holds the News bulletin's daily clock ON-DEVICE (AlarmManager), not server-side: the R1's WS
  * connection is connect-on-wake, not persistent (see WebsocketProtocol.isAudioChannelOpened --
  * openAudioChannel tears down and reconnects), so a server-side scheduler would find the device
- * offline at the trigger time almost every day. One alarm per day, "trigger": fires at the
- * configured time and emits [info.dourok.voicebot.domain.voice.NewsCommands], which
- * VoiceAssistant.onNewsBulletin turns into a WS connect tagged ?trigger=news_bulletin -- the
- * server does the ENTIRE fetch+LLM-rewrite+play live on that connection (see xiaozhi-server's
- * core/news package). No separate prewarm ping: the LLM rewrite step needs the device's real,
- * live conn.llm (a per-session BYO override applied from the WS "hello" message), which only
- * exists on an actual connection -- a headless HTTP ping ahead of time has no way to get it right,
- * so there's nothing a prewarm step could safely precompute beyond the raw fetch, and that alone
- * wasn't worth the extra moving part.
- * Self-reschedules for the next day from [NewsAlarmReceiver] instead of relying on AlarmManager's
- * inexact setRepeating.
+ * offline at the trigger time almost every day.
+ *
+ * One alarm per day. When it fires, [NewsAlarmReceiver] simply sends the phrase "đọc bản tin" as a
+ * typed query -- the same route the panel's test button and /api/say take -- and the server's
+ * get_news_bulletin tool produces and plays the bulletin. Self-reschedules for the next day rather
+ * than relying on AlarmManager's inexact setRepeating.
  */
 object NewsAlarmScheduler {
     private const val TAG = "NewsAlarmScheduler"
@@ -36,6 +32,7 @@ object NewsAlarmScheduler {
         cancel(context)
         if (!Settings.newsEnabled) {
             Log.i(TAG, "News disabled -> no alarm scheduled")
+            AppLog.i("Bản tin đang TẮT -> không hẹn giờ")
             return
         }
         val (hour, minute) = parseTime(Settings.newsTime) ?: run {
@@ -45,6 +42,7 @@ object NewsAlarmScheduler {
         val triggerAt = nextOccurrence(hour, minute)
         scheduleAt(context, REQ_TRIGGER, "trigger", triggerAt)
         Log.i(TAG, "News alarm scheduled: trigger=$triggerAt")
+        AppLog.i("Hẹn giờ bản tin: ${java.text.SimpleDateFormat("dd/MM HH:mm", java.util.Locale.US).format(java.util.Date(triggerAt))}")
     }
 
     /** Reschedules the alarm for its next daily occurrence -- called by [NewsAlarmReceiver] right
@@ -85,6 +83,7 @@ object NewsAlarmScheduler {
             }
         } catch (e: Throwable) {
             Log.e(TAG, "scheduleAt($kind) failed, falling back to plain set()", e)
+            AppLog.w("Hẹn giờ chính xác thất bại, dùng cách thường: ${e.message}")
             try {
                 am.set(AlarmManager.RTC_WAKEUP, atMillis, pi)
             } catch (e2: Throwable) {

@@ -1,5 +1,6 @@
 package info.dourok.voicebot.protocol
 import android.util.Log
+import info.dourok.voicebot.domain.voice.AppLog
 import info.dourok.voicebot.data.model.DeviceInfo
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -87,6 +88,7 @@ class WebsocketProtocol(private val deviceInfo: DeviceInfo,
             .addHeader("Client-Id", deviceInfo.uuid) //
             .build()
         Log.i(TAG, "WebSocket connecting to $url")
+        AppLog.i("Đang nối server $url")
         // Log header
         request.headers.forEach { (name, value) ->
             Log.i(TAG, "Header: $name: $value")
@@ -97,6 +99,7 @@ class WebsocketProtocol(private val deviceInfo: DeviceInfo,
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 isOpen = true
                 Log.i(TAG, "WebSocket connected")
+                AppLog.i("Đã nối server")
                 scope.launch {
                     audioChannelStateFlow.emit(AudioState.OPENED)
                 }
@@ -172,6 +175,7 @@ class WebsocketProtocol(private val deviceInfo: DeviceInfo,
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 isOpen = false
                 Log.i(TAG, "WebSocket closed: $code: $reason")
+                AppLog.i("Server đóng kết nối ($code${if (reason.isNotBlank()) ": $reason" else ""})")
                 scope.launch {
                     audioChannelStateFlow.emit(AudioState.CLOSED)
                 }
@@ -182,6 +186,7 @@ class WebsocketProtocol(private val deviceInfo: DeviceInfo,
                 isOpen = false
                 t.printStackTrace()
                 Log.e(TAG, "WebSocket error: ${t.message}")
+                AppLog.e("Lỗi kết nối server: ${t.message}")
                 scope.launch {
                     networkErrorFlow.emit("Server not found")
                 }
@@ -201,6 +206,7 @@ class WebsocketProtocol(private val deviceInfo: DeviceInfo,
             }
         } catch (e: TimeoutCancellationException) {
             Log.e(TAG, "Failed to receive server hello")
+            AppLog.e("Server không trả lời bắt tay (quá 10 giây)")
             networkErrorFlow.emit("Server timeout")
             closeAudioChannel()
             false

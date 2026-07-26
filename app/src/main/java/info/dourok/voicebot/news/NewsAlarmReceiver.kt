@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import info.dourok.voicebot.control.ControlServer
+import info.dourok.voicebot.domain.voice.AppLog
 import info.dourok.voicebot.domain.voice.TextCommands
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -24,12 +25,14 @@ class NewsAlarmReceiver : BroadcastReceiver() {
                 when (kind) {
                     "trigger" -> {
                         Log.i(TAG, "news alarm -> sending '${ControlServer.NEWS_PHRASE}'")
+                        AppLog.i("Tới giờ hẹn -> yêu cầu đọc bản tin")
                         TextCommands.flow.tryEmit(ControlServer.NEWS_PHRASE)
                     }
                     else -> Log.w(TAG, "unknown alarm kind: $kind")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "handling '$kind' failed", e)
+                AppLog.e("Xử lý hẹn giờ '$kind' lỗi: ${e.message}")
             } finally {
                 NewsAlarmScheduler.rescheduleOne(appContext, kind)
                 pending.finish()

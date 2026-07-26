@@ -96,7 +96,7 @@ body{background:var(--body-bg);color:var(--fg);
 /* Nested scrollers: `contain` stops a pane from handing its leftover scroll to the page behind
    (the jarring part when scrollers are nested) while keeping the normal feel inside the pane --
    unlike `none`, which also kills the inner bounce and reads as dead/abrupt on touch. */
-.page,.media-scroll,#chat,#haPick,#setupLog{overscroll-behavior:contain;}
+.page,.media-scroll,#chat,#haPick,#logList{overscroll-behavior:contain;}
 .page{flex:1;overflow-y:auto;display:none;flex-direction:column;}
 .page.on{display:flex;}
 
@@ -108,10 +108,33 @@ body{background:var(--body-bg);color:var(--fg);
 #chatFab:active{transform:scale(.93);}
 #chatFab svg{width:17px;height:17px;}
 body.chat-open #chatFab{opacity:0;pointer-events:none;}
+/* Second FAB, stacked above the chat one (chat sits at bottom:18 and is ~44px tall). */
+#logFab{position:fixed;right:18px;bottom:74px;z-index:150;display:flex;align-items:center;gap:7px;
+  border:0;border-radius:26px;padding:10px 15px;background:var(--bg2);color:var(--fg);font-size:12px;
+  font-weight:700;cursor:pointer;border:1px solid var(--line);box-shadow:0 6px 18px rgba(0,0,0,.34);
+  transition:transform .15s,opacity .2s;}
+#logFab:active{transform:scale(.93);}
+#logFab svg{width:15px;height:15px;opacity:.8;}
+#logFab .dot{width:7px;height:7px;border-radius:50%;background:#ef4444;display:none;}
+#logFab.haserr .dot{display:block;}
+body.chat-open #logFab,body.log-open #logFab{opacity:0;pointer-events:none;}
+#logDrawer{position:fixed;top:0;right:0;width:460px;max-width:96vw;height:100vh;height:100dvh;z-index:160;
+  background:var(--bg2);border-left:1px solid var(--line);box-shadow:-14px 0 44px rgba(0,0,0,.5);
+  display:flex;flex-direction:column;transform:translateX(100%);transition:transform .24s ease;
+  overscroll-behavior:contain;}
+#logDrawer.open{transform:translateX(0);}
+#logList{flex:1;overflow:auto;padding:10px 12px;font-family:ui-monospace,'SF Mono',monospace;
+  font-size:11px;line-height:1.5;overscroll-behavior:contain;}
+.lg{display:flex;gap:8px;padding:3px 0;border-bottom:1px solid rgba(127,127,127,.10);}
+.lg .tm{flex:0 0 54px;color:var(--mut);}
+.lg .mg{flex:1;white-space:pre-wrap;word-break:break-word;color:var(--fg);opacity:.9;}
+.lg.W .mg{color:#f59e0b;opacity:1;}
+.lg.E .mg{color:#ef4444;opacity:1;font-weight:600;}
+.logbar{display:flex;align-items:center;gap:8px;padding:9px 12px;border-top:1px solid var(--line);}
 #chatBackdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:158;opacity:0;visibility:hidden;
   transition:opacity .22s,visibility .22s;}
 #chatBackdrop.open{opacity:1;visibility:visible;}
-#chatDrawer{position:fixed;top:0;right:0;width:400px;max-width:92vw;height:100vh;height:100dvh;z-index:160;
+#chatDrawer{position:fixed;top:0;right:0;width:460px;max-width:96vw;height:100vh;height:100dvh;z-index:160;
   background:var(--bg2);border-left:1px solid var(--line);box-shadow:-14px 0 44px rgba(0,0,0,.5);
   display:flex;flex-direction:column;transform:translateX(100%);transition:transform .24s ease;
   overscroll-behavior:contain;}
@@ -501,11 +524,6 @@ select::-ms-expand{display:none;}
     </div>
 
     <div class="card">
-      <div class="ch"><span class="icon-badge ib-sys"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h12v9H4z"/><line x1="7" y1="7" x2="13" y2="7"/><line x1="7" y1="10" x2="11" y2="10"/></svg></span><h2>Log</h2></div>
-      <div class="hint" id="setupLog" style="white-space:pre-wrap;max-height:120px;overflow:auto;font-family:ui-monospace,'SF Mono',monospace;font-size:11px"></div>
-    </div>
-
-    <div class="card">
       <div class="ch"><span class="icon-badge ib-sys"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16 6a7 7 0 10.8 6"/><path d="M16 2.5v4h-4"/></svg></span><h2>Ứng dụng</h2></div>
       <button class="btn warn" onclick="restart()"><span class="btn-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 11-2.3-5.6"/><path d="M20 3.5V9h-5.5"/></svg></span>Restart app</button>
       <div class="hint" style="margin-top:8px">Khởi động lại app để áp dụng các thay đổi cần restart (engine, nguồn mic, sample rate).</div>
@@ -547,6 +565,20 @@ select::-ms-expand{display:none;}
 </div><!--app-->
 
 <!-- CHAT: floating button + right-side drawer -->
+<button id="logFab" onclick="toggleLog()"><span class="dot"></span><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 4.5h12M4 8h12M4 11.5h8M4 15h5"/></svg>Log</button>
+<div id="logBackdrop" onclick="closeLog()" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:158;opacity:0;visibility:hidden;transition:opacity .22s,visibility .22s"></div>
+<div id="logDrawer">
+  <div class="chat-head">
+    <div class="logo"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 4.5h12M4 8h12M4 11.5h8M4 15h5"/></svg></div>
+    <h3>Nhật ký hoạt động</h3>
+    <button class="chat-close" onclick="closeLog()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+  <div id="logList"><div class="empty">Chưa có log.</div></div>
+  <div class="logbar">
+    <div class="segsel" style="flex:1"><button id="lfAll" class="on" onclick="logFilter('all')">Tất cả</button><button id="lfErr" onclick="logFilter('err')">Lỗi</button></div>
+    <button class="tbtn" onclick="logClear()" title="Xoá log"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 7h14M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>
+  </div>
+</div>
 <button id="chatFab" onclick="toggleChat()"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M3 5a2 2 0 012-2h10a2 2 0 012 2v6a2 2 0 01-2 2H9l-4 3v-3H5a2 2 0 01-2-2V5z"/></svg>Chat</button>
 <div id="chatBackdrop" onclick="closeChat()"></div>
 <div id="chatDrawer">
@@ -575,6 +607,35 @@ function tab(t){['set','setup','media'].forEach(x=>{$('p'+x).classList.toggle('o
 function openChat(){$('chatDrawer').classList.add('open');$('chatBackdrop').classList.add('open');document.body.classList.add('chat-open');setTimeout(()=>{const i=$('msg');if(i)i.focus();},60);}
 function closeChat(){$('chatDrawer').classList.remove('open');$('chatBackdrop').classList.remove('open');document.body.classList.remove('chat-open');}
 function toggleChat(){$('chatDrawer').classList.contains('open')?closeChat():openChat();}
+
+// ── Log drawer ────────────────────────────────────
+// Polls only while open (same idea as the Media tab): the panel already polls /api/state every
+// 1.5s, and this device has little headroom to spare. Fetches only entries newer than the last
+// seq seen, so a long session doesn't re-send the whole buffer every tick.
+let logSeq=0,logTimer=null,logRows=[],logMode='all';
+function openLog(){$('logDrawer').classList.add('open');$('logBackdrop').classList.add('open');
+  document.body.classList.add('log-open');logPoll();logTimer=setInterval(logPoll,1500);}
+function closeLog(){$('logDrawer').classList.remove('open');$('logBackdrop').classList.remove('open');
+  document.body.classList.remove('log-open');clearInterval(logTimer);logTimer=null;}
+function toggleLog(){$('logDrawer').classList.contains('open')?closeLog():openLog();}
+function logFilter(m){logMode=m;$('lfAll').classList.toggle('on',m==='all');$('lfErr').classList.toggle('on',m==='err');renderLogs();}
+async function logPoll(){
+  try{const j=await(await fetch('/api/logs?since='+logSeq)).json();
+    if(j.items&&j.items.length){logRows=logRows.concat(j.items).slice(-500);renderLogs();}
+    logSeq=j.last||logSeq;
+  }catch(e){}
+}
+function renderLogs(){
+  const el=$('logList');
+  const rows=logMode==='err'?logRows.filter(r=>r.lvl!=='I'):logRows;
+  if(!rows.length){el.innerHTML='<div class="empty">'+(logMode==='err'?'Không có lỗi nào.':'Chưa có log.')+'</div>';return;}
+  const atB=el.scrollHeight-el.scrollTop-el.clientHeight<60;
+  el.innerHTML=rows.map(r=>`<div class="lg ${r.lvl}"><span class="tm">${fmtTime(r.t)}</span><span class="mg">${esc(r.m)}</span></div>`).join('');
+  if(atB)el.scrollTop=el.scrollHeight;          // stay pinned to the newest unless scrolled up
+  $('logFab').classList.toggle('haserr',logRows.some(r=>r.lvl==='E'));
+}
+function esc(t){return (t||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+async function logClear(){await fetch('/api/logs/clear',{method:'POST'});logRows=[];logSeq=0;renderLogs();}
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeChat();});
 function send(){const t=$('msg').value.trim();if(!t)return;fetch(`/api/say?text=${encodeURIComponent(t)}`,{method:'POST'});$('msg').value='';}
 function setSr(v){$('sr24').classList.toggle('on',v===24000);$('sr48').classList.toggle('on',v===48000);set('playback_sr',v);}
@@ -812,35 +873,32 @@ let modelManual=false;
 function togModelInput(){modelManual=!modelManual;$('lmodel').hidden=modelManual;$('lmodelText').hidden=!modelManual;}
 function curModel(){return modelManual?$('lmodelText').value.trim():$('lmodel').value;}
 function llmParams(){return `base_url=${encodeURIComponent($('burl').value.trim())}&api_key=${encodeURIComponent($('akey').value)}&model=${encodeURIComponent(curModel())}`;}
-function logSetup(m){const el=$('setupLog');if(!el)return;el.textContent=(new Date().toLocaleTimeString('vi-VN')+'  '+m+'\n'+el.textContent).slice(0,2000);}
 async function fetchModels(){$('llmStat').textContent='Đang tải models…';
   try{const j=await(await fetch('/api/llm/models?'+llmParams())).json();
-    if(!j.ok){$('llmStat').textContent='Models: '+j.error;logSetup('models ✗ '+j.error);return;}
+    if(!j.ok){$('llmStat').textContent='Models: '+j.error;return;}
     $('lmodel').innerHTML=j.models.map(m=>`<option value="${m}">${m}</option>`).join('')||'<option value="">(none)</option>';
     modelManual=false;$('lmodel').hidden=false;$('lmodelText').hidden=true;
-    $('llmStat').textContent=j.models.length+' models';logSetup('models: '+j.models.length+' loaded');}
-  catch(e){$('llmStat').textContent='Lỗi fetch models';logSetup('models ✗ '+e);}}
+    $('llmStat').textContent=j.models.length+' models';}
+  catch(e){$('llmStat').textContent='Lỗi fetch models';}}
 async function testLlm(){
   if(!curModel()){$('llmStat').textContent='✗ Chọn/nhập model trước (bấm nút tải lại hoặc sửa).';return;}
   $('llmStat').textContent='Testing…';
   try{const j=await(await fetch('/api/llm/test?'+llmParams(),{method:'POST'})).json();
-    $('llmStat').textContent=j.ok?`✓ ${j.latency_ms}ms · ${j.model}`:`✗ ${j.error}`;
-    logSetup('test '+(j.ok?('✓ '+j.latency_ms+'ms · '+j.model):('✗ '+j.error)));}
-  catch(e){$('llmStat').textContent='✗ '+e;logSetup('test ✗ '+e);}}
+    $('llmStat').textContent=j.ok?`✓ ${j.latency_ms}ms · ${j.model}`:`✗ ${j.error}`;}
+  catch(e){$('llmStat').textContent='✗ '+e;}}
 async function saveLlm(){const p=$('prov').value;
   const kv={llm_provider:p,llm_base_url:$('burl').value.trim(),
     llm_model:curModel(),llm_transport:$('ltrans').value};
   if($('akey').value)kv.llm_api_key=$('akey').value;   // don't wipe the saved key when left blank
   for(const k in kv)await fetch(`/api/set?key=${k}&value=${encodeURIComponent(kv[k])}`,{method:'POST'});
-  $('llmStat').textContent='Đã lưu — áp dụng từ lần wake kế tiếp.';logSetup('saved provider='+p+' model='+curModel());}
+  $('llmStat').textContent='Đã lưu — áp dụng từ lần wake kế tiếp.';}
 async function connectServer(){$('srvStat').textContent='Connecting…';
   try{const j=await(await fetch('/api/setup/server?ota='+encodeURIComponent($('ota').value.trim()),{method:'POST'})).json();
-    $('srvStat').textContent=j.ok?('● '+j.ws_url+(j.src==='derived'?' (derived)':'')):('✗ '+j.error);
-    logSetup('connect '+(j.ok?('✓ '+j.ws_url+' ['+j.src+']'):('✗ '+j.error)));}
-  catch(e){$('srvStat').textContent='✗ '+e;logSetup('connect ✗ '+e);}}
+    $('srvStat').textContent=j.ok?('● '+j.ws_url+(j.src==='derived'?' (derived)':'')):('✗ '+j.error);}
+  catch(e){$('srvStat').textContent='✗ '+e;}}
 function setWake(e){$('weAlexa').classList.toggle('on',e==='alexa');$('weNabu').classList.toggle('on',e==='nabu');$('weMaiOi').classList.toggle('on',e==='mai_oi');
   wakeUI(e);
-  fetch('/api/setup/wake?engine='+e,{method:'POST'});logSetup('wake engine -> '+e);}
+  fetch('/api/setup/wake?engine='+e,{method:'POST'});}
 // Show only the sensitivity control that applies to the selected engine (Alexa uses wake_sensitivity;
 // Mai ơi uses mai_oi_threshold; OK Nabu has a fixed cutoff -> neither). Avoids dead sliders.
 function wakeUI(e){var a=document.getElementById('alexaWake'),n=document.getElementById('nabuWake'),m=document.getElementById('maiOiWake');
@@ -858,13 +916,13 @@ function togHaKey(){$('haTok').type=$('haTok').type==='password'?'text':'passwor
 function haParams(){return `ha_url=${encodeURIComponent($('haUrl').value.trim())}&token=${encodeURIComponent($('haTok').value)}`;}
 async function testHa(){$('haStat').textContent='Testing…';
   try{const j=await(await fetch('/api/ha/test?'+haParams())).json();
-    $('haStat').textContent=j.ok?'✓ HA reachable':('✗ '+j.error);logSetup('HA test '+(j.ok?'✓':'✗ '+j.error));}
+    $('haStat').textContent=j.ok?'✓ HA reachable':('✗ '+j.error);}
   catch(e){$('haStat').textContent='✗ '+e;}}
 async function fetchHaDevices(){$('haStat').textContent='Đang tải devices…';
   try{const j=await(await fetch('/api/ha/devices?'+haParams())).json();
-    if(!j.ok){$('haStat').textContent='✗ '+j.error;logSetup('HA fetch ✗ '+j.error);return;}
+    if(!j.ok){$('haStat').textContent='✗ '+j.error;return;}
     haAll=j.devices;renderHaDomains();renderHaPick();
-    $('haStat').textContent=haAll.length+' entities';logSetup('HA fetch: '+haAll.length+' entities');}
+    $('haStat').textContent=haAll.length+' entities';}
   catch(e){$('haStat').textContent='✗ '+e;}}
 function renderHaDomains(){$('haDomains').innerHTML=HA_DOMAINS.map(d=>`<button class="${d===haDomain?'on':''}" onclick="haDomain='${d}';renderHaDomains();renderHaPick()">${d}</button>`).join('');}
 function renderHaPick(){const q=($('haSearch').value||'').toLowerCase();
@@ -887,13 +945,12 @@ async function saveAssistant(){const v=$('assistantPrompt').value;
   // practical length ceiling long free text can silently exceed (truncates instead of erroring).
   const r=await fetch(`/api/set?key=custom_prompt`,{method:'POST',body:v});
   const j=await r.json().catch(()=>({ok:false}));
-  $('assistantStat').textContent=j.ok?(v.trim()?'Đã lưu — áp dụng từ lần wake kế tiếp.':'Đã lưu (trống) — dùng mặc định server.'):'✗ Lỗi lưu, thử lại.';
-  logSetup('assistant prompt saved ('+v.length+' ký tự)'+(j.ok?'':' FAILED'));}
+  $('assistantStat').textContent=j.ok?(v.trim()?'Đã lưu — áp dụng từ lần wake kế tiếp.':'Đã lưu (trống) — dùng mặc định server.'):'✗ Lỗi lưu, thử lại.';}
 async function saveHa(){const lines=haLines();
   const kv={ha_url:$('haUrl').value.trim(),ha_devices:lines};
   if($('haTok').value)kv.ha_token=$('haTok').value;   // don't wipe the saved token when left blank
   for(const k in kv)await fetch(`/api/set?key=${k}&value=${encodeURIComponent(kv[k])}`,{method:'POST'});
-  $('haStat').textContent='Đã lưu '+lines.split('\n').filter(Boolean).length+' thiết bị.';logSetup('HA saved '+lines.split('\n').filter(Boolean).length+' devices');renderHaSaved(lines);}
+  $('haStat').textContent='Đã lưu '+lines.split('\n').filter(Boolean).length+' thiết bị.';renderHaSaved(lines);}
 function renderHaSaved(devs){const lines=(devs||'').split('\n').filter(Boolean);
   $('haSaved').innerHTML=lines.map((l,i)=>`<div class="row" style="margin:5px 0;gap:6px"><input class="codein" value="${l.replace(/"/g,'&quot;')}" onchange="editHaLine(${i},this.value)"><button class="tbtn" onclick="removeHaLine(${i})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>`).join('')||'<div class="hint">(chưa lưu thiết bị nào)</div>';
   $('haSaved').dataset.lines=JSON.stringify(lines);}

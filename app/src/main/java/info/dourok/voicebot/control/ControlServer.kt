@@ -12,6 +12,7 @@ import fi.iki.elonen.NanoHTTPD.newFixedLengthResponse
 import info.dourok.voicebot.data.Settings
 import info.dourok.voicebot.data.maskApiKey
 import info.dourok.voicebot.domain.voice.AudioPlayback
+import info.dourok.voicebot.domain.voice.AppLog
 import info.dourok.voicebot.domain.voice.ConversationLog
 import info.dourok.voicebot.domain.voice.LedIndicator
 import info.dourok.voicebot.domain.voice.LedState
@@ -70,7 +71,7 @@ class ControlServer @Inject constructor(
                 session.parameters["state"]?.firstOrNull()?.let { previewLed(it) }
                 json("""{"ok":true}""")
             }
-            "/api/restart" -> json("""{"ok":true}""").also { scheduleRestart() }
+            "/api/restart" -> json("""{"ok":true}""").also { AppLog.i("Khởi động lại app theo yêu cầu"); scheduleRestart() }
             "/api/mic/start" -> { MicTest.start(session.parameters["agc"]?.firstOrNull() == "1"); json("""{"ok":true}""") }
             "/api/mic/stop" -> { MicTest.stop(); json("""{"ok":true,"bytes":${MicTest.sizeBytes()}}""") }
             "/api/mic/rec.wav" -> serveWav()
@@ -96,6 +97,8 @@ class ControlServer @Inject constructor(
             "/api/media/resume" -> { MediaCommands.flow.tryEmit(MediaCommands.Command.Resume); json("""{"ok":true}""") }
             "/api/media/stop" -> { MediaCommands.flow.tryEmit(MediaCommands.Command.Stop); json("""{"ok":true}""") }
             "/api/media/state" -> json(buildMediaState())
+            "/api/logs" -> json(buildLogs(param(session, "since").toLongOrNull() ?: 0L))
+            "/api/logs/clear" -> { AppLog.clear(); AppLog.i("Đã xoá log"); json("""{"ok":true}""") }
             "/api/news/save" -> json(handleNewsSave(session))
             // "Phát thử" is just the spoken request, typed: the server's get_news_bulletin tool
             // does the rest. Same path as /api/say and as the daily alarm, so all three triggers
@@ -334,10 +337,12 @@ class ControlServer @Inject constructor(
         return if (fromOta != null) {
             Settings.wsUrl = fromOta.first
             Settings.wsToken = fromOta.second
+            AppLog.i("Đổi server: ${fromOta.first} (từ OTA)")
             """{"ok":true,"ws_url":${JSONObject.quote(Settings.wsUrl)},"src":"ota"}"""
         } else {
             Settings.wsUrl = derived
             Settings.wsToken = ""
+            AppLog.w("OTA không trả lời, tự suy ra server: $derived")
             """{"ok":true,"ws_url":${JSONObject.quote(Settings.wsUrl)},"src":"derived"}"""
         }
     }
@@ -384,11 +389,13 @@ class ControlServer @Inject constructor(
             http.newCall(req).execute().use { resp ->
                 val txt = resp.body?.string().orEmpty()
                 if (!resp.isSuccessful) {
+                    AppLog.e("Test AI model lỗi HTTP ${resp.code}")
                     return """{"ok":false,"error":${JSONObject.quote("HTTP ${resp.code}: ${txt.take(160)}")}}"""
                 }
                 // Reply may be a plain JSON object or an SSE stream ("data: {chunk}"). Accept both.
                 val echoed = extractModelId(txt) ?: model
                 val dt = System.currentTimeMillis() - t0
+                AppLog.i("Test AI model OK: $echoed (${dt}ms)")
                 """{"ok":true,"latency_ms":$dt,"model":${JSONObject.quote(echoed)}}"""
             }
         } catch (e: Exception) {
@@ -579,6 +586,7 @@ class ControlServer @Inject constructor(
         Settings.newsVoice = voice
         if (csvParts.isNotEmpty()) Settings.newsCategories = csvParts.joinToString(",")
 
+        AppLog.i("Lưu Bản tin: ${if (enabled) "bật $time" else "tắt"}, mục=[${csvParts.joinToString(",")}], giọng=$voice")
         info.dourok.voicebot.news.NewsAlarmScheduler.reschedule(context)
 
         val base = info.dourok.voicebot.news.NewsAlarmScheduler.serverHttpBase()
@@ -604,6 +612,17 @@ class ControlServer @Inject constructor(
             }
         }
         return """{"ok":true}"""
+    }
+
+    /** Incremental: only entries newer than [since], so polling doesn't resend the whole buffer. */
+    private fun buildLogs(since: Long): String {
+        val arr = JSONArray()
+        AppLog.since(since).forEach {
+            arr.put(JSONObject()
+                .put("seq", it.seq).put("lvl", it.level.name)
+                .put("t", it.time).put("m", it.msg))
+        }
+        return JSONObject().put("last", AppLog.lastSeq()).put("items", arr).toString()
     }
 
     private fun buildMediaState(): String {

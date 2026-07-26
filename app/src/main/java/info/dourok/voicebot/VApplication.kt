@@ -2,6 +2,7 @@ package info.dourok.voicebot
 
 import android.app.Application
 import android.util.Log
+import info.dourok.voicebot.domain.voice.AppLog
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -47,6 +48,8 @@ class VApplication : Application() {
                     "\n===== CRASH $ts (thread=${thread.name}) =====\n$sw\n"
                 )
                 Log.e("VApplication", "CRASH", e)
+                // Also into the app log the panel shows, so a crash is visible without pulling files.
+                AppLog.e("CRASH (${thread.name}): ${e.javaClass.simpleName}: ${e.message}")
             } catch (_: Exception) {
             }
             prev?.uncaughtException(thread, e)  // let the system handle it (app still crashes as usual)
