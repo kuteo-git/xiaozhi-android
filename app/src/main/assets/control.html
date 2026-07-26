@@ -926,9 +926,21 @@ function renderChat(msgs){
   if(atB)c.scrollTop=c.scrollHeight;
 }
 
+// Volume runs on hardware STEPS, not percent. The device has ~15 of them (one step ≈ 6.7%), so a
+// 0-100 slider could express values it cannot hold: dragging to 39% quantized down to step 5 and
+// the next poll redrew it as 33%. Driving the slider by step index makes those values unreachable
+// in the first place. Percent stays the wire format — it round-trips exactly now that both ends
+// round to nearest instead of truncating (see ControlServer.setVolume).
+let volSteps=0;
+const volPct=idx=>volSteps?Math.round(idx*100/volSteps):+idx;
+const volIdx=pct=>volSteps?Math.round(pct*volSteps/100):+pct;
+
 let eqInit=false;
 function render(s){
-  $('vol').value=s.volume;$('volv').textContent=s.volume+'%';
+  if(s.volume_steps>0&&s.volume_steps!==volSteps){volSteps=s.volume_steps;$('vol').max=volSteps;}
+  // Never redraw the slider mid-drag (same guard the LED fields use below): the poll landing a
+  // moment after release is what made the value visibly jump back.
+  if(document.activeElement!==$('vol')){$('vol').value=volIdx(s.volume);$('volv').textContent=s.volume+'%';}
   $('ws').value=parseFloat(s.wake_sensitivity);$('wsv').textContent=s.wake_sensitivity;
   $('wss').value=parseFloat(s.wake_sensitivity_speaking);$('wssv').textContent=s.wake_sensitivity_speaking;
   if(s.mic_source!=null)$('msrc').value=s.mic_source;
@@ -985,7 +997,7 @@ function render(s){
   if(sig!==lastSig){lastSig=sig;renderChat(s.chat);}
 }
 function onEq(i,v){bands[i]=parseInt(v);$('g'+i).textContent=(v/100).toFixed(0);set('eq_bands',bands.join(','));}
-$('vol').oninput=e=>{$('volv').textContent=e.target.value+'%';set('volume',e.target.value);};
+$('vol').oninput=e=>{const p=volPct(e.target.value);$('volv').textContent=p+'%';set('volume',p);};
 $('ws').oninput=e=>{$('wsv').textContent=(+e.target.value).toFixed(2);set('wake_sensitivity',(+e.target.value).toFixed(2));};
 $('wss').oninput=e=>{$('wssv').textContent=(+e.target.value).toFixed(2);set('wake_sensitivity_speaking',(+e.target.value).toFixed(2));};
 $('moT').oninput=e=>{$('moTv').textContent=(+e.target.value).toFixed(2);set('mai_oi_threshold',(+e.target.value).toFixed(2));};

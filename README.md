@@ -229,9 +229,13 @@ value `*_set` is present, and the panel masks them in the UI.
   it can be used to iterate on the UI without rebuilding the app — but if you forget to remove it
   after building a new APK, the control panel will keep showing the *old* UI even though the new
   one is bundled inside. Always `rm /sdcard/control.html` after a build that changes `control.html`.
-- The browser aggressively caches the panel's HTML/JS — hard-refresh after any UI change.
 - Settings changed via `/api/set` are **not clamped** server-side even if the corresponding slider in
   the UI has a max — a value outside the slider's range can still be set directly through the API.
+- **`volume` is quantized to the hardware's step count**, reported as `volume_steps` in `/api/state`
+  (15 on the R1, so one step is ~6.7%). A percent you send is rounded to the nearest step, and
+  `/api/state` reports the step actually in effect — so reading back a value you just wrote can
+  differ by up to half a step. The panel's slider is driven by step index for this reason and can
+  only land on reachable values; anything talking to `/api/set` directly should expect the rounding.
 
 ## Settings reference
 

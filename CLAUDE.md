@@ -57,7 +57,10 @@ Web control on-device (NanoHTTPD) như control center của aiboxplus. Mở `htt
   THẬT lấy từ `ConversationLog.Entry.time` lúc tin nhắn xảy ra, KHÔNG phải giờ client poll thấy),
   `/api/set?key=&value=`, `/api/say?text=`,
   `/api/led?state=`, `/api/restart`, và **mic test**: `/api/mic/start[?agc=1]`, `/api/mic/stop`, `/api/mic/rec.wav`.
-- Trình duyệt cache HTML → sau đổi UI phải **hard-refresh**.
+- `serveAsset()` gửi `Cache-Control: no-store` → không cần hard-refresh sau khi đổi UI nữa.
+- `volume` bị lượng tử hoá theo số nấc phần cứng (`volume_steps` trong `/api/state`, R1 = 15 → 1 nấc
+  ≈ 6,7%): % gửi xuống được làm tròn tới nấc gần nhất, `/api/state` trả về nấc đang thực sự áp dụng.
+  Slider chạy theo **chỉ số nấc**, không phải %, nên không đặt được giá trị máy không giữ nổi.
 
 ### Test mic (A/B) — `domain/voice/MicTest.kt`
 Mic bị wake-detect giữ độc quyền → **KHÔNG mở AudioRecord thứ 2**. Cách làm: `VoiceAssistant.runAudioLoop`

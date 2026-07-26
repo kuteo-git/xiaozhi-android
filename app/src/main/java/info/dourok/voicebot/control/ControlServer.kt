@@ -188,10 +188,18 @@ class ControlServer @Inject constructor(
         })
     }
 
+    /**
+     * The hardware scale is coarse — STREAM_MUSIC on the R1 has 15 steps, so one step is ~6.7%.
+     * Both this and [buildState]'s read-back round to the NEAREST step: integer division truncates,
+     * which always lands low and by up to a full step, and the two truncations compounded — 39%
+     * became step 5, which then reported back as 33%.
+     */
     private fun setVolume(percent: Int) {
         val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-        am.setStreamVolume(AudioManager.STREAM_MUSIC, (percent * max / 100).coerceIn(0, max), 0)
+        if (max <= 0) return
+        val step = Math.round(percent.coerceIn(0, 100) * max / 100f).coerceIn(0, max)
+        am.setStreamVolume(AudioManager.STREAM_MUSIC, step, 0)
         Settings.volume = percent
     }
 
@@ -218,7 +226,9 @@ class ControlServer @Inject constructor(
         val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
         val cur = am.getStreamVolume(AudioManager.STREAM_MUSIC)
-        o.put("volume", if (max > 0) cur * 100 / max else 0)
+        o.put("volume", if (max > 0) Math.round(cur * 100f / max) else 0)
+        // Lets the UI build a slider that can only express values the hardware can actually hold.
+        o.put("volume_steps", max)
 
         playback.eqInfo()?.let { eq ->
             o.put("eq", JSONObject().apply {
