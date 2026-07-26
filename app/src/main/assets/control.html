@@ -2,7 +2,7 @@
 <html lang="vi" data-theme="dark">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>R1 Control</title>
 <!-- Inject theme trước khi paint để tránh flash -->
 <script>(function(){try{var t=localStorage.getItem('r1-theme')||'dark';document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
@@ -16,8 +16,16 @@
   --grad-dim:rgba(232,69,60,.12);
   --ok:#22c55e;--err:#ef4444;
   --body-bg:var(--bg);
-  /* Clearance for the floating Chat button so the last row can always scroll above it. */
-  --fab-clear:80px;
+  /* Bottom clearance for the floating buttons, so the last row can always be scrolled clear of
+     them. Sized off the TOP of the upper button, not the lower one: Log sits at bottom:74px and is
+     ~38px tall, and now (unified with Chat) 44px tall, so its top edge is at 118px (+24px breathing) -- 80px (correct back when Chat was the only button)
+     left the last card sitting underneath it. Recompute this if either button's offset, padding
+     or font-size changes. */
+  --fab-clear:142px;
+  /* Fallback only. The home bar's real height comes from its two-line title block (taller than
+     the logo) and depends on font metrics, so it cannot be derived reliably here -- syncTopbar()
+     measures the real element and overwrites this. Hardcoding it was off by 8px. */
+  --topbar-h:65px;
 }
 /* ── LIGHT ──────────────────────────────────────── */
 [data-theme=light]{
@@ -30,6 +38,12 @@
   --body-bg:#f2f4fa;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0;}
+/* This is a control panel, not a document: a long press should never start a text selection or
+   pop iOS's copy/share callout, which is what happens when you hold a button or drag a row.
+   Inputs are exempted right after -- they still need the caret, selection handles and editing. */
+html{-webkit-user-select:none;-moz-user-select:none;user-select:none;-webkit-touch-callout:none;}
+input,textarea,select,[contenteditable]{
+  -webkit-user-select:text;-moz-user-select:text;user-select:text;-webkit-touch-callout:default;}
 *{scrollbar-width:thin;scrollbar-color:#1c2235 transparent;}
 ::-webkit-scrollbar{width:5px;height:5px;}
 ::-webkit-scrollbar-track{background:transparent;}
@@ -68,12 +82,15 @@ body{background:var(--body-bg);color:var(--fg);
 .thm-btn:hover{background:var(--grad-dim);}
 .thm-btn svg{width:16px;height:16px;display:block;}
 .logo svg{width:18px;height:18px;}
-.chat-head .logo svg{width:15px;height:15px;}
 .tbtn svg{width:14px;height:14px;display:block;margin:0 auto;}
 .chat-close svg{width:15px;height:15px;display:block;}
 .inbar button svg{width:16px;height:16px;}
 /* icon sitting next to a text label inside a button */
 .btn-ico{display:inline-flex;vertical-align:-2px;margin-right:6px;}
+/* Trailing icon (text first, e.g. "Fetch devices"): the gap belongs on the other side, otherwise
+   the glyph sits flush against the last letter. Handled on the class so any button can put its
+   icon on either side and still be spaced like the rest. */
+.btn-ico:last-child{margin-right:0;margin-left:6px;}
 .btn-ico svg{width:14px;height:14px;}
 /* status */
 .status{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--mut);}
@@ -107,22 +124,31 @@ body{background:var(--body-bg);color:var(--fg);
   transition:transform .15s,opacity .2s;}
 #chatFab:active{transform:scale(.93);}
 #chatFab svg{width:17px;height:17px;}
-body.chat-open #chatFab{opacity:0;pointer-events:none;}
+/* Either drawer hides BOTH buttons -- the drawer covers the right side of the screen, so a button
+   left visible would float on top of it. */
+body.chat-open #chatFab,body.log-open #chatFab{opacity:0;pointer-events:none;}
 /* Second FAB, stacked above the chat one (chat sits at bottom:18 and is ~44px tall). */
 #logFab{position:fixed;right:18px;bottom:74px;z-index:150;display:flex;align-items:center;gap:7px;
-  border:0;border-radius:26px;padding:10px 15px;background:var(--bg2);color:var(--fg);font-size:12px;
+  border:0;border-radius:26px;padding:12px 17px;background:var(--bg2);color:var(--fg);font-size:13px;
   font-weight:700;cursor:pointer;border:1px solid var(--line);box-shadow:0 6px 18px rgba(0,0,0,.34);
   transition:transform .15s,opacity .2s;}
 #logFab:active{transform:scale(.93);}
-#logFab svg{width:15px;height:15px;opacity:.8;}
+#logFab svg{width:17px;height:17px;}
 #logFab .dot{width:7px;height:7px;border-radius:50%;background:#ef4444;display:none;}
 #logFab.haserr .dot{display:block;}
 body.chat-open #logFab,body.log-open #logFab{opacity:0;pointer-events:none;}
-#logDrawer{position:fixed;top:0;right:0;width:460px;max-width:96vw;height:100vh;height:100dvh;z-index:160;
-  background:var(--bg2);border-left:1px solid var(--line);box-shadow:-14px 0 44px rgba(0,0,0,.5);
-  display:flex;flex-direction:column;transform:translateX(100%);transition:transform .24s ease;
+#logDrawer{touch-action:pan-y;position:fixed;top:0;right:0;width:460px;max-width:96vw;height:100vh;height:100dvh;z-index:160;
+  background:var(--bg2);border-left:1px solid var(--line);
+  display:flex;flex-direction:column;transform:translateX(100%);
+  /* A closed drawer is still rendered, just pushed off-screen -- so its left-facing shadow
+     spilled back onto the visible right edge. Invisible against the dark theme, an obvious
+     black gradient against the light one (and doubled, since both drawers do it). Shadow
+     only while open; visibility hidden afterwards so it also drops out of the tab order. */
+  box-shadow:none;visibility:hidden;pointer-events:none;
+  transition:transform .24s ease,box-shadow .24s ease,visibility 0s .24s;
   overscroll-behavior:contain;}
-#logDrawer.open{transform:translateX(0);}
+#logDrawer.open{transform:translateX(0);visibility:visible;pointer-events:auto;box-shadow:-14px 0 44px rgba(0,0,0,.5);
+  transition:transform .24s ease,box-shadow .24s ease,visibility 0s;}
 #logList{flex:1;overflow:auto;padding:10px 12px;font-family:ui-monospace,'SF Mono',monospace;
   font-size:11px;line-height:1.5;overscroll-behavior:contain;}
 .lg{display:flex;gap:8px;padding:3px 0;border-bottom:1px solid rgba(127,127,127,.10);}
@@ -131,24 +157,32 @@ body.chat-open #logFab,body.log-open #logFab{opacity:0;pointer-events:none;}
 .lg.W .mg{color:#f59e0b;opacity:1;}
 .lg.E .mg{color:#ef4444;opacity:1;font-weight:600;}
 .logbar{display:flex;align-items:center;gap:8px;padding:9px 12px;border-top:1px solid var(--line);}
-#chatBackdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:158;opacity:0;visibility:hidden;
+#chatBackdrop,#logBackdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:158;opacity:0;visibility:hidden;pointer-events:none;
   transition:opacity .22s,visibility .22s;}
-#chatBackdrop.open{opacity:1;visibility:visible;}
-#chatDrawer{position:fixed;top:0;right:0;width:460px;max-width:96vw;height:100vh;height:100dvh;z-index:160;
-  background:var(--bg2);border-left:1px solid var(--line);box-shadow:-14px 0 44px rgba(0,0,0,.5);
-  display:flex;flex-direction:column;transform:translateX(100%);transition:transform .24s ease;
+#chatBackdrop.open,#logBackdrop.open{opacity:1;visibility:visible;pointer-events:auto;}
+#chatDrawer{touch-action:pan-y;position:fixed;top:0;right:0;width:460px;max-width:96vw;height:100vh;height:100dvh;z-index:160;
+  background:var(--bg2);border-left:1px solid var(--line);
+  display:flex;flex-direction:column;transform:translateX(100%);
+  /* A closed drawer is still rendered, just pushed off-screen -- so its left-facing shadow
+     spilled back onto the visible right edge. Invisible against the dark theme, an obvious
+     black gradient against the light one (and doubled, since both drawers do it). Shadow
+     only while open; visibility hidden afterwards so it also drops out of the tab order. */
+  box-shadow:none;visibility:hidden;pointer-events:none;
+  transition:transform .24s ease,box-shadow .24s ease,visibility 0s .24s;
   overscroll-behavior:contain;}
-#chatDrawer.open{transform:translateX(0);}
-.chat-head{display:flex;align-items:center;gap:9px;padding:13px 14px;border-bottom:1px solid var(--line);}
-.chat-head .logo{width:26px;height:26px;font-size:14px;box-shadow:none;}
+#chatDrawer.open{transform:translateX(0);visibility:visible;pointer-events:auto;box-shadow:-14px 0 44px rgba(0,0,0,.5);
+  transition:transform .24s ease,box-shadow .24s ease,visibility 0s;}
+.chat-head{display:flex;align-items:center;gap:10px;padding:13px 14px 11px;
+  min-height:var(--topbar-h);border-bottom:1px solid var(--line);}
+/* Same logo as the home header -- only the glow is dropped. Sizing it down here was what
+   made the drawer icons look smaller than the home one. */
+.chat-head .logo{box-shadow:none;}
 .chat-head h3{font-size:14px;font-weight:700;flex:1;}
 .chat-close{border:0;background:none;color:var(--mut);font-size:19px;cursor:pointer;padding:2px 7px;
   border-radius:7px;line-height:1;}
 .chat-close:active{background:var(--grad-dim);}
 
-@supports (padding: env(safe-area-inset-bottom)) {
-  .settings,.media-scroll{padding-bottom:calc(var(--fab-clear) + env(safe-area-inset-bottom));}
-}
+
 
 /* ── SETTINGS ──────────────────────────────────── */
 .settings{padding:10px 13px var(--fab-clear);}
@@ -360,6 +394,63 @@ select::-ms-expand{display:none;}
 .media-empty{margin:28px auto;color:var(--mut);text-align:center;font-size:13px;line-height:1.8;
   display:flex;flex-direction:column;align-items:center;gap:8px;}
 .media-empty svg{width:26px;height:26px;opacity:.55;}
+
+/* ── EDGE / SAFE-AREA (kept LAST on purpose) ───────
+   These override base rules that set `padding` with the shorthand (.settings, .inbar,
+   .media-scroll). Earlier in the file they lost to those shorthands and silently did nothing --
+   which is exactly how the chat input ended up with no bottom inset on a phone. */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .settings,.media-scroll{padding-bottom:calc(var(--fab-clear) + env(safe-area-inset-bottom));}
+  /* Bottom-edge UI on a phone with a home indicator: the bar/buttons otherwise sit under it and
+     are awkward or impossible to hit. Applies to all three surfaces -- tabs, chat, log. */
+  .inbar{padding-bottom:calc(10px + env(safe-area-inset-bottom));}
+  .logbar{padding-bottom:calc(9px + env(safe-area-inset-bottom));}
+  #chatFab{bottom:calc(18px + env(safe-area-inset-bottom));}
+  #logFab{bottom:calc(74px + env(safe-area-inset-bottom));}
+  /* viewport-fit=cover also lets content slide under the notch and, in landscape, the rounded
+     corners -- so the insets are ADDED to the existing padding, not substituted for it. */
+  .head{padding-top:calc(13px + env(safe-area-inset-top));
+    padding-left:calc(15px + env(safe-area-inset-left));
+    padding-right:calc(15px + env(safe-area-inset-right));}
+  .chat-head{padding-top:calc(13px + env(safe-area-inset-top));
+    padding-left:calc(14px + env(safe-area-inset-left));
+    padding-right:calc(14px + env(safe-area-inset-right));}
+
+  .settings{padding-left:calc(13px + env(safe-area-inset-left));
+    padding-right:calc(13px + env(safe-area-inset-right));}
+}
+
+/* Phone-width drawers go edge to edge: a 4vw sliver of dimmed page behind them just wastes
+   horizontal space on a screen this narrow. */
+@media (max-width: 620px) {
+  #chatDrawer,#logDrawer{width:100%;max-width:100%;}
+}
+
+/* ── PRESS / HOVER FEEDBACK ────────────────────────
+   The reset at the top of this file sets -webkit-tap-highlight-color:transparent, which removes
+   the OS tap flash -- so any control without its own :active state acknowledges a tap with
+   nothing at all. These give every one of them a visible press: an accent ring plus a slight
+   shrink. Ring rather than a drop shadow so it reads the same in both themes (it is drawn from
+   --grad-dim, which each theme defines for itself).
+   Hover is gated behind (hover:hover): on a touchscreen a :hover rule sticks after the tap and
+   leaves the control looking permanently highlighted. */
+.btn:active,.tbtn:active,.segsel button:active,.seg button:active,.chat-close:active,
+.ms-clear:active,.grip:active,select:active,.sw:active span,
+.news-row:not(.dragging):active{
+  box-shadow:0 0 0 4px var(--grad-dim);
+}
+.btn:active,.tbtn:active,.segsel button:active,.chat-close:active,.ms-clear:active{
+  transform:scale(.97);
+}
+select:active,select:focus{box-shadow:0 0 0 4px var(--grad-dim);}
+.sw span{transition:background .22s,box-shadow .15s,border-color .22s;}
+
+@media (hover:hover){
+  .btn:not(:disabled):hover,.tbtn:hover,.segsel button:not(.on):hover,
+  .chat-close:hover,.ms-clear:hover{box-shadow:0 0 0 3px var(--grad-dim);}
+  .seg button:not(.on):hover{background:rgba(128,128,128,.08);}
+  .news-row:not(.dragging):hover{border-color:var(--a1);}
+}
 </style>
 </head>
 <body>
@@ -565,11 +656,11 @@ select::-ms-expand{display:none;}
 </div><!--app-->
 
 <!-- CHAT: floating button + right-side drawer -->
-<button id="logFab" onclick="toggleLog()"><span class="dot"></span><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 4.5h12M4 8h12M4 11.5h8M4 15h5"/></svg>Log</button>
-<div id="logBackdrop" onclick="closeLog()" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:158;opacity:0;visibility:hidden;transition:opacity .22s,visibility .22s"></div>
+<button id="logFab"><span class="dot"></span><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 5h12M4 8.5h12M4 12h8M4 15.5h5"/></svg>Log</button>
+<div id="logBackdrop" onclick="closeLog()"></div>
 <div id="logDrawer">
   <div class="chat-head">
-    <div class="logo"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 4.5h12M4 8h12M4 11.5h8M4 15h5"/></svg></div>
+    <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6h14M5 10h14M5 14h9M5 18h6"/></svg></div>
     <h3>Nhật ký hoạt động</h3>
     <button class="chat-close" onclick="closeLog()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   </div>
@@ -579,7 +670,7 @@ select::-ms-expand{display:none;}
     <button class="tbtn" onclick="logClear()" title="Xoá log"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 7h14M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>
   </div>
 </div>
-<button id="chatFab" onclick="toggleChat()"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M3 5a2 2 0 012-2h10a2 2 0 012 2v6a2 2 0 01-2 2H9l-4 3v-3H5a2 2 0 01-2-2V5z"/></svg>Chat</button>
+<button id="chatFab"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M3 5a2 2 0 012-2h10a2 2 0 012 2v6a2 2 0 01-2 2H9l-4 3v-3H5a2 2 0 01-2-2V5z"/></svg>Chat</button>
 <div id="chatBackdrop" onclick="closeChat()"></div>
 <div id="chatDrawer">
   <div class="chat-head"><div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4.5"/><circle cx="12" cy="3.5" r="1.2"/><path d="M9 13v1.5M15 13v1.5"/></svg></div><h3>Chat với robot</h3><button class="chat-close" onclick="closeChat()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
@@ -606,6 +697,20 @@ function tab(t){['set','setup','media'].forEach(x=>{$('p'+x).classList.toggle('o
   if(t==='media')mediaPollStart();else mediaPollStop();}
 function openChat(){$('chatDrawer').classList.add('open');$('chatBackdrop').classList.add('open');document.body.classList.add('chat-open');setTimeout(()=>{const i=$('msg');if(i)i.focus();},60);}
 function closeChat(){$('chatDrawer').classList.remove('open');$('chatBackdrop').classList.remove('open');document.body.classList.remove('chat-open');}
+
+
+// The floating buttons listen on pointerdown, not click. iOS swallows the first tap after a swipe
+// gesture (it goes to settling the gesture instead of becoming a click), so a click-based handler
+// simply never ran -- measured: a full 2s after a swipe-close, no click event was dispatched at
+// all. pointerdown still fires, and preventDefault() stops the compatibility click that would
+// otherwise arrive later and toggle the drawer a second time.
+function bindFab(id,fn){
+  const el=$(id);if(!el)return;
+  el.addEventListener('pointerdown',e=>{
+    e.preventDefault();
+    fn();
+  });
+}
 function toggleChat(){$('chatDrawer').classList.contains('open')?closeChat():openChat();}
 
 // ── Log drawer ────────────────────────────────────
@@ -648,6 +753,17 @@ function toggleTheme(){
   $('thmBtn').innerHTML=next==='dark'?SVG_MOON:SVG_SUN;
   try{localStorage.setItem('r1-theme',next);}catch(e){}
 }
+// The drawer headers have to match the home header, whose height is set by its own content --
+// a two-line title block, not the logo. No constant can track that across font metrics, themes or
+// later edits, so measure the real element and publish it as --topbar-h.
+function syncTopbar(){
+  const h=document.querySelector('.head');
+  if(h&&h.offsetHeight)document.documentElement.style.setProperty('--topbar-h',h.offsetHeight+'px');
+}
+syncTopbar();
+addEventListener('resize',syncTopbar);
+addEventListener('orientationchange',syncTopbar);
+
 (function initTheme(){
   const t=document.documentElement.getAttribute('data-theme')||'dark';
   $('thmBtn').innerHTML=t==='dark'?SVG_MOON:SVG_SUN;
@@ -742,6 +858,58 @@ async function testNews(){
     $('newsStat').textContent='Đã gửi — robot sẽ nói "chờ tao soạn bản tin chút nha" rồi đọc sau ~20-45 giây (lần sau trong 30 phút thì phát ngay).';
   }catch(e){$('newsStat').textContent='✗ Lỗi gọi phát thử.';}
 }
+
+// ── Swipe-right-to-close (iOS-style) ──────────────
+// KNOWN LIMITATION (measured, not guessed): on iOS the first tap anywhere on the page after this
+// gesture is swallowed by the OS to settle the touch sequence -- it never becomes a click, so no
+// handler runs. Confirmed by beaconing from inside tab(): two taps on a tab produced exactly one
+// call. Neither pointer capture, click-swallowing, nor cache headers change it; the floating
+// buttons dodge it only because bindFab() listens on pointerdown, which fires earlier. Closing via
+// the ✕ or the backdrop is unaffected. Accepted trade-off -- do not re-debug this from scratch.
+// Only after the gesture has committed to horizontal: a drag that starts vertical belongs to the
+// list underneath, and hijacking it would make the log impossible to scroll. touch-action:pan-y
+// leaves vertical panning to the browser so scrolling stays native and smooth.
+function attachSwipeClose(id, close){
+  const el=$(id); if(!el)return;
+  let sx=0,sy=0,dx=0,t0=0,tracking=false,decided=false,pid=null;
+  el.addEventListener('pointerdown',e=>{
+    if(e.pointerType==='mouse')return;                       // mouse has the ✕ and the backdrop
+    if(e.target.closest('input,textarea,select,button'))return;  // typing/tapping isn't swiping
+    sx=e.clientX;sy=e.clientY;dx=0;t0=Date.now();tracking=true;decided=false;
+  });
+  el.addEventListener('pointermove',e=>{
+    if(!tracking)return;
+    const mx=e.clientX-sx,my=e.clientY-sy;
+    if(!decided){
+      if(Math.abs(mx)<8&&Math.abs(my)<8)return;              // too small to read intent yet
+      decided=true;
+      if(Math.abs(my)>Math.abs(mx)){tracking=false;return;}  // vertical -> hand it back to the list
+      el.style.transition='none';                            // follow the finger 1:1
+      // Own the gesture for the rest of its life. Without capture the sequence ends on an element
+      // that is being hidden mid-swipe, and iOS treats the touch as unfinished -- it then spends
+      // the NEXT tap settling it instead of turning it into a click, so the first press on
+      // anything underneath does nothing. Released explicitly in end().
+      try{el.setPointerCapture(e.pointerId);}catch(_){}
+      pid=e.pointerId;
+    }
+    dx=Math.max(0,mx);                                       // rightward only; no rubber-band left
+    el.style.transform='translateX('+dx+'px)';
+  });
+  const end=()=>{
+    if(!tracking)return;
+    tracking=false;
+    if(pid!==null){try{el.releasePointerCapture(pid);}catch(_){}pid=null;}
+    el.style.transition='';el.style.transform='';            // hand control back to the CSS classes
+    const flick=dx>60&&(Date.now()-t0)<300;
+    if(dx>el.offsetWidth*0.3||flick)close();
+  };
+  el.addEventListener('pointerup',end);
+  el.addEventListener('pointercancel',end);
+}
+bindFab('chatFab',toggleChat);
+bindFab('logFab',toggleLog);
+attachSwipeClose('chatDrawer',closeChat);
+attachSwipeClose('logDrawer',closeLog);
 
 // ── Chat với timestamp (giờ thật lúc tin nhắn xảy ra, do server gửi lên) ──
 let lastSig='';
