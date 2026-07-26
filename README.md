@@ -46,8 +46,12 @@ https://github.com/user-attachments/assets/1ee53869-1987-4e1f-a64a-26c7c0ec032f
 - **Boot start** — launches automatically on device boot.
 - **Music** — the server streams music (e.g. YouTube via a pytube service) back as normal audio.
 - **On-device web control panel** (port `8088`) — configure the server, wake engine, LLM and Home
-  Assistant integration, run a live A/B mic test, tail logs and view chat history, all from a
-  browser — no rebuild required. See [Control panel](#control-panel-port-8088) below.
+  Assistant integration, run a live A/B mic test, follow the app's activity log and view chat
+  history, all from a browser — no rebuild required. See [Control panel](#control-panel-port-8088) below.
+- **Daily news bulletin** — a scheduled time, a checklist of categories in the order they should be
+  read, and a reading voice, all set from the control panel. An on-device alarm fires at the
+  configured time (the WS connection is connect-on-wake, so the clock has to live here rather than
+  on the server) and asks for the bulletin the same way saying "đọc bản tin" does.
 - **Assistant persona** — an optional custom system prompt (`custom_prompt`) sent to the server on
   connect, editable from the control panel's Setup tab.
 - **Home Assistant integration** — fetch/search devices from a Home Assistant instance, annotate and
@@ -180,6 +184,18 @@ rebuilding it. Open `http://<device-ip>:8088` from any browser on the same netwo
 - **LED control** — trigger LED states directly for testing.
 - **Chat log** — recent conversation turns with real timestamps (from when the message actually
   happened, not from when the browser polled for it).
+- **Bản tin (news bulletin)** — a Settings-tab card: on/off, the time of the daily reading, the five
+  categories (drag ⠿ to set the reading order), a dedicated reading voice, and a test button. Saving
+  it re-arms the on-device alarm and pushes the checklist to the server, which does the actual
+  fetching/editing/synthesis (see the `news` service in the robot-esp32 repo). All three triggers —
+  saying "đọc bản tin", the test button, the daily alarm — send the same typed query, so they share
+  one code path.
+- **Activity log** — a drawer behind the floating **Log** button (above Chat) showing the app's own
+  event journal: connects, config changes, conversation lifecycle, errors. Colour-coded by level with
+  an all/errors filter. Deliberately *not* logcat: release builds strip every `android.util.Log`
+  call, and on the R1 logcat is flooded by the mic driver and evicts app lines within seconds.
+  Entries are also appended to `/sdcard/voicebot-app.log` (rotating at 256KB) by a background
+  thread, so what happened before a crash or restart is still readable. Credentials are masked.
 - **Restart** — restart the app process from the panel (the last card in the Setup tab).
 
 ### HTTP API
@@ -199,6 +215,10 @@ rebuilding it. Open `http://<device-ip>:8088` from any browser on the same netwo
 | `/api/llm/test` | GET/POST | Test the configured LLM connection |
 | `/api/ha/devices` | GET/POST | Fetch/search Home Assistant devices |
 | `/api/ha/test` | GET | Test the Home Assistant connection |
+| `/api/logs?since=<seq>` | GET | Activity-log entries newer than `seq` (incremental; the drawer polls only while open) |
+| `/api/logs/clear` | POST | Clear the in-memory activity log |
+| `/api/news/save` | POST | Save the whole Bản tin card (JSON body); re-arms the alarm and forwards the checklist to the server |
+| `/api/news/test` | POST | Play the bulletin now (sends the same typed query the alarm does) |
 
 Secrets (API keys, HA tokens) are never echoed back in full — `/api/state` reports only whether a
 value `*_set` is present, and the panel masks them in the UI.
@@ -228,6 +248,7 @@ readable/writable through the control panel or its HTTP API.
 | LLM | `llmProvider`, `llmBaseUrl`, `llmApiKey`, `llmModel`, `llmTransport` |
 | Home Assistant | `haUrl`, `haToken`, `haDevices` |
 | Assistant persona | `customPrompt` |
+| News bulletin | `newsEnabled`, `newsTime`, `newsCategories` (ordered `key:0\|1` CSV — order *is* reading order), `newsVoice` |
 
 ## Notes for Android 5.1.1 (R1)
 
