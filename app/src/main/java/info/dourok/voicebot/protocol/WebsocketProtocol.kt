@@ -53,11 +53,15 @@ class WebsocketProtocol(private val deviceInfo: DeviceInfo,
         } ?: Log.e(TAG, "WebSocket is null")
     }
 
-    override suspend fun sendText(text: String) {
+    /** OkHttp's send() returns false once the socket is closed or closing. Discarding that result
+     *  loses the message silently -- and the client can believe a channel is still open for minutes
+     *  after the server closed it, so every command in that window vanished without a trace. */
+    override suspend fun sendText(text: String): Boolean {
         Log.i(TAG, "Sending text: $text")
-        websocket?.run {
-            send(text)
-        } ?: Log.e(TAG, "WebSocket is null")
+        val ws = websocket ?: run { Log.e(TAG, "WebSocket is null"); return false }
+        val sent = ws.send(text)
+        if (!sent) Log.w(TAG, "send() refused: socket closed/closing")
+        return sent
     }
 
     override fun isAudioChannelOpened(): Boolean {

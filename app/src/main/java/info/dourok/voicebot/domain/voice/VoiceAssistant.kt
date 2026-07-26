@@ -38,6 +38,7 @@ class VoiceAssistant @Inject constructor(
     val emotion = MutableStateFlow("neutral")
 
     @Volatile private var isAwake = false
+        set(v) { field = v; VoiceDebugState.awake = v }
     @Volatile private var isMusic = false   // server báo play_youtube đang phát -> LED nhạc
     private var aborted = false
     private var encoder: OpusEncoder? = null
@@ -142,6 +143,7 @@ class VoiceAssistant @Inject constructor(
                 }
             }
             launch { state.collect { refreshLed() } }   // LED bám theo trạng thái
+            launch { state.collect { VoiceDebugState.voiceState = it.name } }
             launch { state.collect { Log.i(TAG, "state -> $it isAwake=$isAwake t=${System.currentTimeMillis()}") } }
         }
     }
@@ -164,9 +166,21 @@ class VoiceAssistant @Inject constructor(
         if (!protocol.isAudioChannelOpened()) protocol.openAudioChannel()
         isAwake = true
         autoTurns = 0
-        protocol.sendTextQuery(text)
+        // isAudioChannelOpened() can lag reality: after the server closes an idle session the
+        // client may keep believing the socket is open for minutes, and a query written into it is
+        // dropped with no error at all. Trust the send result instead -- reconnect and retry once.
+        if (!protocol.sendTextQuery(text)) {
+            Log.w(TAG, "sendTextQuery dropped (stale channel) -> reconnect + retry once")
+            protocol.closeAudioChannel()
+            if (protocol.openAudioChannel()) {
+                if (!protocol.sendTextQuery(text)) Log.e(TAG, "sendTextQuery failed after reconnect")
+            } else {
+                Log.e(TAG, "reconnect failed, query lost: $text")
+            }
+        }
         state.value = VoiceState.SPEAKING
     }
+
 
     private suspend fun runAudioLoop() {
         encoder = OpusEncoder(16000, 1, 60)

@@ -96,6 +96,14 @@ class ControlServer @Inject constructor(
             "/api/media/resume" -> { MediaCommands.flow.tryEmit(MediaCommands.Command.Resume); json("""{"ok":true}""") }
             "/api/media/stop" -> { MediaCommands.flow.tryEmit(MediaCommands.Command.Stop); json("""{"ok":true}""") }
             "/api/media/state" -> json(buildMediaState())
+            "/api/news/save" -> json(handleNewsSave(session))
+            // "Phát thử" is just the spoken request, typed: the server's get_news_bulletin tool
+            // does the rest. Same path as /api/say and as the daily alarm, so all three triggers
+            // share one proven route instead of a bespoke connection mode.
+            "/api/news/test" -> {
+                TextCommands.flow.tryEmit(NEWS_PHRASE)
+                json("""{"ok":true}""")
+            }
             else -> newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "404")
         }
     } catch (e: Exception) {
@@ -242,6 +250,24 @@ class ControlServer @Inject constructor(
         o.put("ha_devices", Settings.haDevices)
         // Assistant persona override — plain text, no secret to mask.
         o.put("custom_prompt", Settings.customPrompt)
+
+        // News bulletin (server does the actual work — core/news/*.py; this is just what the
+        // panel needs to render the section + what NewsAlarmScheduler needs on-device).
+        o.put("news_enabled", Settings.newsEnabled)
+        o.put("news_time", Settings.newsTime)
+        o.put("news_voice", Settings.newsVoice)
+        val newsCategories = JSONArray()
+        Settings.newsCategories.split(",").forEach { part ->
+            val kv = part.split(":")
+            if (kv.size == 2) {
+                newsCategories.put(JSONObject().put("key", kv[0]).put("enabled", kv[1] == "1"))
+            }
+        }
+        o.put("news_categories", newsCategories)
+        // Live assistant state -- see VoiceDebugState for why this is exposed over HTTP rather
+        // than only logged (the R1's logcat is drowned by its mic driver).
+        o.put("voice_state", info.dourok.voicebot.domain.voice.VoiceDebugState.voiceState)
+        o.put("voice_awake", info.dourok.voicebot.domain.voice.VoiceDebugState.awake)
         return o.toString()
     }
 
@@ -513,6 +539,73 @@ class ControlServer @Inject constructor(
         return """{"ok":true}"""
     }
 
+    /**
+     * Saves the whole News section atomically (unlike the per-field `set()` used elsewhere): the
+     * checklist order + enabled flags only make sense together, not as independent key/value
+     * writes. Body: {"enabled":bool,"time":"HH:mm","voice":"...","categories":[{"key":...,
+     * "enabled":bool},...]} (array order = playback order). Persists locally (Settings, read by
+     * NewsAlarmScheduler), re-derives the daily alarms, and best-effort pushes the same payload to
+     * the server's durable copy (core/news/store.py) so a server restart doesn't lose it -- a
+     * failed push isn't fatal, the device is still the source of truth for the next save.
+     */
+    private fun handleNewsSave(session: IHTTPSession): String {
+        val body = HashMap<String, String>()
+        try {
+            session.parseBody(body)
+        } catch (e: Exception) {
+            Log.e(TAG, "parseBody for /api/news/save: ${e.message}")
+            return """{"ok":false,"error":"could not read body"}"""
+        }
+        val root = try {
+            JSONObject(body["postData"].orEmpty())
+        } catch (e: Exception) {
+            return """{"ok":false,"error":"body must be JSON"}"""
+        }
+
+        val enabled = root.optBoolean("enabled", false)
+        val time = root.optString("time", "07:00")
+        val voice = root.optString("voice", "")
+        val categoriesArr = root.optJSONArray("categories") ?: JSONArray()
+        val csvParts = mutableListOf<String>()
+        for (i in 0 until categoriesArr.length()) {
+            val c = categoriesArr.optJSONObject(i) ?: continue
+            val key = c.optString("key", "")
+            if (key.isBlank()) continue
+            csvParts.add("$key:${if (c.optBoolean("enabled", true)) 1 else 0}")
+        }
+
+        Settings.newsEnabled = enabled
+        Settings.newsTime = time
+        Settings.newsVoice = voice
+        if (csvParts.isNotEmpty()) Settings.newsCategories = csvParts.joinToString(",")
+
+        info.dourok.voicebot.news.NewsAlarmScheduler.reschedule(context)
+
+        val base = info.dourok.voicebot.news.NewsAlarmScheduler.serverHttpBase()
+        if (base.isNotBlank()) {
+            try {
+                val deviceId = info.dourok.voicebot.news.NewsAlarmScheduler.deviceId(context)
+                val payload = JSONObject()
+                    .put("enabled", enabled)
+                    .put("time", time)
+                    .put("voice", voice)
+                    .put("categories", categoriesArr)
+                    .toString().toRequestBody("application/json".toMediaType())
+                val req = Request.Builder()
+                    .url("$base/news/config?device_id=${java.net.URLEncoder.encode(deviceId, "UTF-8")}")
+                    .post(payload).build()
+                http.newCall(req).execute().use { resp ->
+                    if (!resp.isSuccessful) {
+                        Log.w(TAG, "news config push: HTTP ${resp.code}")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "news config push failed: ${e.message}")
+            }
+        }
+        return """{"ok":true}"""
+    }
+
     private fun buildMediaState(): String {
         val np = MediaSessionState.nowPlaying.value
         val queueArr = JSONArray()
@@ -597,5 +690,8 @@ class ControlServer @Inject constructor(
         private const val TAG = "ControlServer"
         private const val PYTUBE_PORT = 114   // services/pytube_api.py binds this
         const val PORT = 8088
+        /** Phrase that makes the server's get_news_bulletin tool fire. Shared with
+         * NewsAlarmReceiver so the button and the daily alarm cannot drift apart. */
+        const val NEWS_PHRASE = "đọc bản tin"
     }
 }

@@ -185,13 +185,15 @@ class MqttProtocol(
 
     override fun isAudioChannelOpened(): Boolean = udpClient != null
 
-    override suspend fun sendText(text: String) {
-        if (publishTopic.isEmpty() || mqttClient?.isConnected != true) return
-        try {
+    override suspend fun sendText(text: String): Boolean {
+        if (publishTopic.isEmpty() || mqttClient?.isConnected != true) return false
+        return try {
             mqttClient?.publish(publishTopic, text.toByteArray(), 1, false)
+            true
         } catch (e: MqttException) {
             Log.e(TAG, "Failed to publish message", e)
             networkErrorFlow.emit("Server error")
+            false
         }
     }
 

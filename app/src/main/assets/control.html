@@ -185,6 +185,23 @@ input[type=range]:active::-webkit-slider-thumb{box-shadow:0 0 0 5px rgba(232,69,
   background:var(--mut);border-radius:50%;transition:.22s;}
 .sw input:checked+span{background:var(--grad);border-color:transparent;}
 .sw input:checked+span:before{transform:translateX(18px);background:#fff;}
+/* Submenu-sized toggle (checklist rows inside a card): same shape, ~78% scale, so it reads as
+   subordinate to the card-header toggles. flex-basis is pinned because `.row label{flex:0 0 90px}`
+   also matches `label.sw` and would otherwise stretch the track to 90px. */
+.sw.sw-sm{width:34px;height:20px;flex:0 0 34px;margin:0;}
+.sw.sw-sm span{border-radius:10px;}
+.sw.sw-sm span:before{width:16px;height:16px;}
+.sw.sw-sm input:checked+span:before{transform:translateX(14px);}
+
+/* ── DRAG-REORDER (news checklist) ─────────────── */
+.news-row{display:flex;align-items:center;gap:8px;margin:4px 0;padding:6px 8px;
+  border:1px solid var(--line);border-radius:10px;background:var(--bg);}
+.news-row.dragging{opacity:.55;border-color:transparent;background:var(--grad);
+  box-shadow:0 6px 18px rgba(0,0,0,.28);}
+.news-row .grip{flex:0 0 20px;display:flex;align-items:center;justify-content:center;
+  color:var(--mut);cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;}
+.news-row .grip svg{width:15px;height:15px;}
+.news-row .nm{flex:1;font-size:13px;color:var(--fg);opacity:.85;}
 
 /* ── SEGSEL ────────────────────────────────────── */
 .segsel{display:flex;gap:3px;background:var(--bg);border:1px solid var(--line);
@@ -194,9 +211,16 @@ input[type=range]:active::-webkit-slider-thumb{box-shadow:0 0 0 5px rgba(232,69,
 .segsel button.on{background:var(--grad);color:#fff;}
 
 /* ── SELECT ────────────────────────────────────── */
-select{background:var(--bg);color:var(--fg);border:1px solid var(--line);
-  border-radius:8px;padding:7px 10px;font-size:13px;outline:none;flex:1;}
+/* Native arrow dropped for a drawn one: the stock control renders its arrow hard against the
+   right border with no gutter, and a long option (voice names, model ids) runs straight into it.
+   padding-right reserves the gutter the native widget never had. */
+select{background-color:var(--bg);color:var(--fg);border:1px solid var(--line);
+  border-radius:8px;padding:7px 32px 7px 10px;font-size:13px;outline:none;flex:1;
+  -webkit-appearance:none;-moz-appearance:none;appearance:none;
+  background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239aa0a6' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9.5l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 10px center;background-size:12px 12px;}
 select:focus{border-color:rgba(232,69,60,.45);}
+select::-ms-expand{display:none;}
 
 /* ── LED INPUTS ─────────────────────────────────── */
 .codein{flex:1;background:var(--bg);color:var(--fg);border:1px solid var(--line);
@@ -349,6 +373,14 @@ select:focus{border-color:rgba(232,69,60,.45);}
       <div class="ch"><span class="icon-badge ib-voice"><svg viewBox="0 0 20 20" fill="currentColor"><rect x="2" y="7" width="2.2" height="6" rx="1.1"/><rect x="6.3" y="4" width="2.2" height="12" rx="1.1"/><rect x="10.6" y="1" width="2.2" height="18" rx="1.1"/><rect x="14.9" y="4" width="2.2" height="12" rx="1.1"/></svg></span><h2>Giọng đọc</h2></div>
       <div class="row"><label>Giọng</label><select id="voice" style="flex:1"><option>(đang tải…)</option></select></div>
       <div class="hint">10 giọng VieNeu — nữ và nam, nhiều phong cách. Áp dụng từ câu trả lời kế tiếp.</div>
+    </div>
+    <div class="card">
+      <div class="ch"><span class="icon-badge ib-ai"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="15" height="12" rx="1.5"/><line x1="6" y1="8" x2="14" y2="8"/><line x1="6" y1="11" x2="11" y2="11"/></svg></span><h2>Bản tin</h2><label class="sw"><input type="checkbox" id="newsOn"><span></span></label></div>
+      <div class="row"><label>Giờ đọc</label><input type="time" class="codein" id="newsTime" style="flex:1"></div>
+      <div id="newsCats"></div>
+      <div class="row"><label>Giọng đọc</label><select id="newsVoice" style="flex:1"><option>(đang tải…)</option></select></div>
+      <div class="row" style="gap:8px"><button class="btn rec" style="flex:1;width:auto" onclick="saveNews()">Save</button><button class="btn rec" style="flex:1;width:auto" onclick="testNews()">Phát thử</button></div>
+      <div class="hint" id="newsStat">Đúng giờ đã hẹn robot tự đọc bản tin: nhạc hiệu đầu, các mục đã bật theo đúng thứ tự (kéo ⠿ để sắp xếp), nhạc hiệu cuối. Giọng đọc riêng cho bản tin, không ảnh hưởng giọng hội thoại thường ở trên. Soạn xong mất ~20-45 giây. Nói "đọc bản tin" bất cứ lúc nào cũng ra bản tin này.</div>
     </div>
     <div class="card">
       <div class="ch"><span class="icon-badge ib-eq"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><line x1="5" y1="2" x2="5" y2="18"/><circle cx="5" cy="7" r="1.8" fill="currentColor" stroke="none"/><line x1="10" y1="2" x2="10" y2="18"/><circle cx="10" cy="13" r="1.8" fill="currentColor" stroke="none"/><line x1="15" y1="2" x2="15" y2="18"/><circle cx="15" cy="9" r="1.8" fill="currentColor" stroke="none"/></svg></span><h2>Equalizer</h2><label class="sw"><input type="checkbox" id="eqon"><span></span></label></div>
@@ -563,10 +595,92 @@ function toggleTheme(){
 // ── TTS voices ───────────────────────────────────
 let TTS_HOST='';  // de-hardcoded: derived from the configured server host via /api/state.tts_host
 const VOICE_DESC={"Ngọc Linh":"Nữ · tươi sáng","Ngọc Lan":"Nữ · dịu dàng","Mỹ Duyên":"Nữ · mượt mà","Trúc Ly":"Nữ · trẻ trung","Gia Bảo":"Nam · mượt mà","Thái Sơn":"Nam · chắc khỏe","Đức Trí":"Nam · rõ ràng","Xuân Vĩnh":"Nam · vui tươi","Trọng Hữu":"Nam · uyên bác","Bình An":"Nam · điềm đạm"};
+let VOICES_CACHE=[];
 async function loadVoices(){try{const v=await(await fetch(TTS_HOST+'/voice')).json();
-  $('voice').innerHTML=v.voices.map(n=>`<option value="${n}"${n===v.voice?' selected':''}>${n} — ${VOICE_DESC[n]||''}</option>`).join('');
+  VOICES_CACHE=v.voices||[];
+  $('voice').innerHTML=VOICES_CACHE.map(n=>`<option value="${n}"${n===v.voice?' selected':''}>${n} — ${VOICE_DESC[n]||''}</option>`).join('');
+  renderNewsVoiceOptions();
 }catch(e){$('voice').innerHTML='<option>(không nối VieNeu :8002)</option>';}}
 $('voice').onchange=e=>fetch(`${TTS_HOST}/voice?name=${encodeURIComponent(e.target.value)}`,{method:'POST'});
+
+// ── News bulletin ──────────────────────────────────
+// The server (xiaozhi-esp32-server) does the actual fetch/LLM/TTS work (core/news/*) and holds
+// the durable config copy; this panel just edits it (order = playback order) and pushes it via
+// /api/news/save (ControlServer.kt), which also re-derives the on-device alarms and best-effort
+// forwards the same config to the server.
+const NEWS_LABELS={society:'Tin trong nước',world:'Tin nước ngoài',tech:'Tin công nghệ',weather:'Thời tiết',power:'Lịch cúp điện'};
+let newsCats=[];
+let newsInit=false;
+const GRIP_SVG='<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.7"/><circle cx="15" cy="6" r="1.7"/><circle cx="9" cy="12" r="1.7"/><circle cx="15" cy="12" r="1.7"/><circle cx="9" cy="18" r="1.7"/><circle cx="15" cy="18" r="1.7"/></svg>';
+function renderNewsCats(){
+  $('newsCats').innerHTML=newsCats.map(c=>`
+    <div class="news-row" data-key="${c.key}">
+      <span class="grip" onpointerdown="newsDragStart(event)" title="Kéo để đổi thứ tự">${GRIP_SVG}</span>
+      <label class="sw sw-sm"><input type="checkbox" ${c.enabled?'checked':''} onchange="newsSetEnabled('${c.key}',this.checked)"><span></span></label>
+      <span class="nm">${NEWS_LABELS[c.key]||c.key}</span>
+    </div>`).join('');
+}
+// Keyed, not indexed: a drag reorders the DOM before the model is re-read, so an index captured at
+// render time would toggle the wrong category.
+function newsSetEnabled(key,on){const c=newsCats.find(x=>x.key===key);if(c)c.enabled=on;}
+
+// Pointer-events drag (works for touch and mouse alike; HTML5 drag-and-drop is unreliable on
+// mobile). The dragged row is moved in the DOM as the pointer passes each neighbour's midpoint,
+// then the model is rebuilt from the final DOM order on release.
+let newsDrag=null;
+function newsDragStart(e){
+  const row=e.currentTarget.closest('.news-row'); if(!row)return;
+  e.preventDefault();
+  newsDrag=row; row.classList.add('dragging');
+  document.addEventListener('pointermove',newsDragMove,{passive:false});
+  document.addEventListener('pointerup',newsDragEnd,{once:true});
+  document.addEventListener('pointercancel',newsDragEnd,{once:true});
+}
+function newsDragMove(e){
+  if(!newsDrag)return;
+  e.preventDefault();
+  const cont=$('newsCats'),y=e.clientY;
+  const others=[...cont.querySelectorAll('.news-row')].filter(r=>r!==newsDrag);
+  let target=null;
+  for(const r of others){const b=r.getBoundingClientRect();if(y<b.top+b.height/2){target=r;break;}}
+  if(target)cont.insertBefore(newsDrag,target); else cont.appendChild(newsDrag);
+}
+function newsDragEnd(){
+  if(!newsDrag)return;
+  newsDrag.classList.remove('dragging');
+  document.removeEventListener('pointermove',newsDragMove);
+  const order=[...$('newsCats').querySelectorAll('.news-row')].map(r=>r.dataset.key);
+  newsCats=order.map(k=>newsCats.find(c=>c.key===k)).filter(Boolean);
+  newsDrag=null;
+  renderNewsCats();
+}
+function renderNewsVoiceOptions(){
+  if(!VOICES_CACHE.length)return;
+  const cur=$('newsVoice').dataset.saved||'';
+  $('newsVoice').innerHTML=VOICES_CACHE.map(n=>`<option value="${n}"${n===cur?' selected':''}>${n} — ${VOICE_DESC[n]||''}</option>`).join('');
+}
+async function saveNews(silent){
+  const body=JSON.stringify({enabled:$('newsOn').checked,time:$('newsTime').value||'07:00',
+    voice:$('newsVoice').value,categories:newsCats});
+  if(!silent)$('newsStat').textContent='Đang lưu…';
+  try{const r=await fetch('/api/news/save',{method:'POST',body});
+    const j=await r.json().catch(()=>({ok:false}));
+    if(!silent)$('newsStat').textContent=j.ok?'Đã lưu.':'✗ '+(j.error||'Lỗi lưu, thử lại.');
+    return j.ok;}
+  catch(e){if(!silent)$('newsStat').textContent='✗ Lỗi lưu, thử lại.';return false;}
+}
+async function testNews(){
+  // Always save first: testing must reflect what's currently on screen, not whatever (if
+  // anything) was last explicitly saved -- otherwise "Phát thử" before ever hitting Save just
+  // silently does nothing (the server has no config yet for this device).
+  $('newsStat').textContent='Đang lưu rồi phát thử…';
+  const ok=await saveNews(true);
+  if(!ok){$('newsStat').textContent='✗ Lỗi lưu, chưa phát thử được.';return;}
+  try{
+    await fetch('/api/news/test',{method:'POST'});
+    $('newsStat').textContent='Đã gửi — robot sẽ nói "chờ tao soạn bản tin chút nha" rồi đọc sau ~20-45 giây (lần sau trong 30 phút thì phát ngay).';
+  }catch(e){$('newsStat').textContent='✗ Lỗi gọi phát thử.';}
+}
 
 // ── Chat với timestamp (giờ thật lúc tin nhắn xảy ra, do server gửi lên) ──
 let lastSig='';
@@ -618,6 +732,18 @@ function render(s){
     if(s.ha_token_set)$('haTok').placeholder='•••• (đã lưu)';
     renderHaSaved(s.ha_devices||'');
     restoreHaSel(s.ha_devices||'');
+  }
+  // News bulletin — own guard (like setupInit above): populate once from saved state, never on
+  // later polls, so an in-progress edit (checkbox/order/time) isn't clobbered every ~1.5s.
+  if(!newsInit){newsInit=true;
+    $('newsOn').checked=!!s.news_enabled;
+    $('newsTime').value=s.news_time||'07:00';
+    newsCats=(s.news_categories&&s.news_categories.length)?s.news_categories:
+      [{key:'society',enabled:true},{key:'world',enabled:true},{key:'tech',enabled:true},
+       {key:'weather',enabled:true},{key:'power',enabled:true}];
+    renderNewsCats();
+    $('newsVoice').dataset.saved=s.news_voice||'';
+    renderNewsVoiceOptions();
   }
   // Display-only (reflect saved state; not user-editable inputs) — safe to refresh each poll.
   $('weAlexa').classList.toggle('on',(s.wake_engine||'alexa')==='alexa');

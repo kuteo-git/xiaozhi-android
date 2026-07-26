@@ -137,6 +137,33 @@ object Settings {
     var customPrompt: String
         get() = prefs.getString("custom_prompt", "")!!
         set(v) = prefs.edit().putString("custom_prompt", v).apply()
+
+    // ── News bulletin (Setting tab) ──────────────────────────────────────────
+    // The server (xiaozhi-esp32-server) holds the durable copy + does the actual fetch/LLM/TTS
+    // work (core/news/*.py) -- these fields are just what NewsAlarmScheduler needs on-device to
+    // know WHEN to wake up, plus what gets POSTed to /news/config on every save.
+    var newsEnabled: Boolean
+        get() = prefs.getBoolean("news_enabled", false)
+        set(v) = prefs.edit().putBoolean("news_enabled", v).apply()
+
+    /** "HH:mm", 24h, local time. */
+    var newsTime: String
+        get() = prefs.getString("news_time", "07:00")!!
+        set(v) = prefs.edit().putString("news_time", v).apply()
+
+    /** Ordered "key:0|1" pairs, comma-separated -- string order IS playback order (reorder ⇒
+     * rewrite this whole string). Keys: society(trong nước)/world(nước ngoài)/tech(công nghệ)/
+     * weather(thời tiết)/power(cúp điện). */
+    var newsCategories: String
+        get() = prefs.getString(
+            "news_categories", "society:1,world:1,tech:1,weather:1,power:1"
+        )!!
+        set(v) = prefs.edit().putString("news_categories", v).apply()
+
+    /** Dedicated VieNeu voice for the bulletin, independent of the normal conversation voice. */
+    var newsVoice: String
+        get() = prefs.getString("news_voice", "")!!
+        set(v) = prefs.edit().putString("news_voice", v).apply()
 }
 
 /** Mask an API key for read-back: empty stays empty; <=4 chars fully masked; else ••••<last4>. */

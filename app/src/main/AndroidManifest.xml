@@ -6,6 +6,9 @@
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <!-- News bulletin: daily wake-at-time alarm (see NewsAlarmScheduler). -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <application
         android:usesCleartextTraffic="true"
         android:allowBackup="true"
@@ -41,6 +44,12 @@
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
+
+        <!-- News bulletin daily alarm (prewarm ping + real trigger). See NewsAlarmScheduler. -->
+        <receiver
+            android:name=".news.NewsAlarmReceiver"
+            android:enabled="true"
+            android:exported="false" />
     </application>
 
 </manifest>

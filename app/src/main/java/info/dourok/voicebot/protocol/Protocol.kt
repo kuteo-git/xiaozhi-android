@@ -27,7 +27,8 @@ abstract class Protocol {
     abstract suspend fun openAudioChannel(): Boolean
     abstract fun closeAudioChannel()
     abstract fun isAudioChannelOpened(): Boolean
-    abstract suspend fun sendText(text: String)
+    /** Returns false when the frame could not be sent (socket closed/closing). */
+    abstract suspend fun sendText(text: String): Boolean
 
     suspend fun sendAbortSpeaking(reason: AbortReason) {
         val json = JSONObject().apply {
@@ -48,8 +49,9 @@ abstract class Protocol {
         sendText(json.toString())
     }
 
-    /** Inject a typed query (from the control panel chat) as if the user had spoken it. */
-    suspend fun sendTextQuery(text: String) {
+    /** Inject a typed query (from the control panel chat) as if the user had spoken it.
+     *  Returns false if the frame was dropped -- see VoiceAssistant.onTextCommand, which retries. */
+    suspend fun sendTextQuery(text: String): Boolean {
         val json = JSONObject().apply {
             put("session_id", sessionId)
             put("type", "listen")
@@ -57,7 +59,7 @@ abstract class Protocol {
             put("mode", "manual")
             put("text", text)
         }
-        sendText(json.toString())
+        return sendText(json.toString())
     }
 
     suspend fun sendStartListening(mode: ListeningMode) {

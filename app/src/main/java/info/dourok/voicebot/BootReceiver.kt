@@ -4,6 +4,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import info.dourok.voicebot.data.Settings
+import info.dourok.voicebot.news.NewsAlarmScheduler
 
 /** Launches the app on device boot (replaces aiboxplus auto-start). */
 class BootReceiver : BroadcastReceiver() {
@@ -20,6 +22,14 @@ class BootReceiver : BroadcastReceiver() {
                 context.startActivity(launch)
             } catch (e: Exception) {
                 Log.e("BootReceiver", "launch failed", e)
+            }
+            // AlarmManager alarms do NOT survive reboot on their own -- re-derive the News
+            // bulletin's daily alarms from the persisted Settings.
+            try {
+                Settings.init(context)
+                NewsAlarmScheduler.reschedule(context)
+            } catch (e: Exception) {
+                Log.e("BootReceiver", "News alarm reschedule failed", e)
             }
         }
     }
