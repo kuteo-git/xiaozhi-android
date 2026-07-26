@@ -686,7 +686,15 @@ class ControlServer @Inject constructor(
         else context.assets.open("control.html").readBytes()
         return newFixedLengthResponse(
             Response.Status.OK, "text/html", ByteArrayInputStream(bytes), bytes.size.toLong(),
-        )
+        ).apply {
+            // The page is edited in place (often straight onto /sdcard) and re-read constantly, so
+            // a cached copy is never what anyone wants. Safari in particular held onto an old
+            // build hard enough that a fix looked broken while the same file loaded fine under a
+            // different query string -- an hour of chasing a bug that was not in the code.
+            addHeader("Cache-Control", "no-store, no-cache, must-revalidate")
+            addHeader("Pragma", "no-cache")
+            addHeader("Expires", "0")
+        }
     }
 
     private fun serveWav(): Response {
