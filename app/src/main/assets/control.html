@@ -796,11 +796,12 @@ function tab(t){['set','setup','media'].forEach(x=>{$('p'+x).classList.toggle('o
 function activateSeg(ids,activeId){ids.forEach(id=>{const el=$(id);if(el)el.classList.toggle('on',id===activeId);});}
 
 
-// The floating buttons listen on pointerdown, not click. iOS swallows the first tap after a swipe
-// gesture (it goes to settling the gesture instead of becoming a click), so a click-based handler
-// simply never ran -- measured: a full 2s after a swipe-close, no click event was dispatched at
-// all. pointerdown still fires, and preventDefault() stops the compatibility click that would
-// otherwise arrive later and toggle the drawer a second time.
+// The floating buttons listen on pointerdown, not click. This originally worked around iOS
+// swallowing the first tap after a swipe-close (pointerdown fires earlier in the sequence, so it
+// survived where click did not); that root cause is now fixed properly -- see the empty
+// touch/pointer listeners near the bottom of this file. Kept because a FAB should react the
+// instant it is pressed. preventDefault() stops the compatibility click that would otherwise
+// arrive later and toggle the drawer a second time.
 function bindFab(id,fn){
   const el=$(id);if(!el)return;
   el.addEventListener('pointerdown',e=>{
@@ -816,7 +817,15 @@ function bindFab(id,fn){
 function createDrawer({drawerId,backdropId,fabId,bodyClass,onOpen,onClose}){
   const open=()=>{$(drawerId).classList.add('open');$(backdropId).classList.add('open');
     document.body.classList.add(bodyClass);if(onOpen)onOpen();};
-  const close=()=>{$(drawerId).classList.remove('open');$(backdropId).classList.remove('open');
+  const close=()=>{
+    // Hand focus back before the drawer goes away. openChat() focuses the message box, which on
+    // iOS raises the software keyboard; swiping the drawer shut left that input focused, and iOS
+    // spends the next tap anywhere on the page blurring it / dismissing the keyboard instead of
+    // turning it into a click -- which is exactly the "have to tap twice" symptom. Closing via the
+    // ✕ blurred it as a side effect of tapping a button, which is why only the swipe showed it.
+    const a=document.activeElement;
+    if(a&&a!==document.body&&$(drawerId).contains(a))a.blur();
+    $(drawerId).classList.remove('open');$(backdropId).classList.remove('open');
     document.body.classList.remove(bodyClass);if(onClose)onClose();};
   const toggle=()=>$(drawerId).classList.contains('open')?close():open();
   bindFab(fabId,toggle);
@@ -966,12 +975,13 @@ async function testNews(){
 }
 
 // ── Swipe-right-to-close (iOS-style) ──────────────
-// KNOWN LIMITATION (measured, not guessed): on iOS the first tap anywhere on the page after this
-// gesture is swallowed by the OS to settle the touch sequence -- it never becomes a click, so no
-// handler runs. Confirmed by beaconing from inside tab(): two taps on a tab produced exactly one
-// call. Neither pointer capture, click-swallowing, nor cache headers change it; the floating
-// buttons dodge it only because bindFab() listens on pointerdown, which fires earlier. Closing via
-// the ✕ or the backdrop is unaffected. Accepted trade-off -- do not re-debug this from scratch.
+// This gesture used to eat the first tap that followed it on iOS: the tap never became a click, so
+// no handler ran, and everything (tabs, buttons, text fields) needed pressing twice. It was long
+// documented here as an unavoidable OS quirk -- it is not. The cause is Safari's fast path for
+// pages that register no document-level touch/pointer listeners, and the cure is the four empty
+// listeners registered near the bottom of this file; see the comment there before touching them.
+// Closing via the ✕ or the backdrop never showed the bug because those are taps on real buttons.
+//
 // Only after the gesture has committed to horizontal: a drag that starts vertical belongs to the
 // list underneath, and hijacking it would make the log impossible to scroll. touch-action:pan-y
 // leaves vertical panning to the browser so scrolling stays native and smooth.
@@ -990,6 +1000,10 @@ function attachSwipeClose(id, close){
       if(Math.abs(mx)<8&&Math.abs(my)<8)return;              // too small to read intent yet
       decided=true;
       if(Math.abs(my)>Math.abs(mx)){tracking=false;return;}  // vertical -> hand it back to the list
+      // Drop focus the moment the swipe commits, so an open iOS keyboard is already on its way out
+      // while the finger is still dragging, instead of eating the first tap after the drawer goes.
+      const af=document.activeElement;
+      if(af&&af!==document.body&&el.contains(af))af.blur();
       el.style.transition='none';                            // follow the finger 1:1
       // Own the gesture for the rest of its life. Without capture the sequence ends on an element
       // that is being hidden mid-swipe, and iOS treats the touch as unfinished -- it then spends
@@ -1007,7 +1021,10 @@ function attachSwipeClose(id, close){
     if(pid!==null){try{el.releasePointerCapture(pid);}catch(_){}pid=null;}
     el.style.transition='';el.style.transform='';            // hand control back to the CSS classes
     const flick=dx>60&&(Date.now()-t0)<300;
-    if(dx>el.offsetWidth*0.3||flick)close();
+    if(dx>el.offsetWidth*0.3||flick){
+      if(window.traceLog)window.traceLog('===== SWIPE-CLOSE '+id+' (dx='+Math.round(dx)+') =====');
+      close();
+    }
   };
   el.addEventListener('pointerup',end);
   el.addEventListener('pointercancel',end);
@@ -1484,6 +1501,48 @@ if(!mediaResultsCache.length)renderMediaResults();
     const t=localStorage.getItem('r1-tab');
     if(t&&['set','setup','media'].includes(t))tab(t);
   }catch(e){}
+})();
+
+// ── iOS: keep the touch sequence on the main thread ──────────────────
+// Fixes "after swiping a drawer closed, the first tap on anything is ignored". Found by accident:
+// turning the ?trace=1 event tracer on made the bug disappear, and the only thing it did that could
+// matter was register document-level capture listeners for the touch/pointer events. Safari has a
+// fast path for pages with no such listeners, where a gesture is settled off the main thread; the
+// leftover state from our custom swipe then gets charged to the next tap instead of that tap
+// becoming a click. Registering listeners opts out of that path. They are intentionally empty --
+// the registration itself is the fix, not anything they do.
+//
+// Cheap: no work per event, and pointer/touch listeners on document are passive by default.
+// If this is ever removed, re-test the swipe-close-then-tap flow on a real iPhone.
+['touchstart','touchend','pointerdown','pointerup'].forEach(function(ev){
+  document.addEventListener(ev,function(){},true);
+});
+
+// ── Event tracer (diagnostic, off unless ?trace=1) ──────────────────
+// For the "must tap twice after swiping a drawer closed" bug on iOS. Everything known so far was
+// inferred from a handler NOT running; nothing ever recorded which low-level events the swallowed
+// tap actually produces. There are no devtools on the device, so the trace has to render on-page.
+// Open http://<host>:8088/?trace=1, swipe a drawer closed, tap a button, and read the list.
+if(location.search.indexOf('trace=1')>=0)(function(){
+  const box=document.createElement('div');
+  box.style.cssText='position:fixed;left:0;right:0;top:0;z-index:9999;max-height:44vh;overflow:auto;'
+    +'background:rgba(0,0,0,.9);color:#0f0;font:10px/1.35 ui-monospace,monospace;padding:5px 7px;'
+    +'white-space:pre-wrap;border-bottom:2px solid #0f0;';
+  const rows=[];let t0=0;
+  const log=(s)=>{const now=Date.now();const d=t0?('+'+String(now-t0).padStart(4)+'ms'):'    0ms';t0=now;
+    rows.push(d+' '+s);while(rows.length>26)rows.shift();
+    box.textContent=rows.join('\n');box.scrollTop=box.scrollHeight;};
+  const name=e=>{const t=e.target;if(!t||!t.tagName)return '?';
+    return t.tagName.toLowerCase()+(t.id?('#'+t.id):(t.className&&typeof t.className==='string'?('.'+t.className.split(' ')[0]):''));};
+  ['touchstart','touchend','touchcancel','pointerdown','pointerup','pointercancel',
+   'mousedown','mouseup','click','focusin','focusout'].forEach(function(ev){
+    document.addEventListener(ev,function(e){log(ev.padEnd(12)+' '+name(e));},true);
+  });
+  window.addEventListener('scroll',()=>log('window scroll'),true);
+  document.addEventListener('DOMContentLoaded',()=>log('--- ready ---'));
+  window.traceLog=log;
+  document.body.appendChild(box);
+  log('tracer on. swipe drawer closed, then tap something.');
 })();
 
 poll();setInterval(poll,1500);
