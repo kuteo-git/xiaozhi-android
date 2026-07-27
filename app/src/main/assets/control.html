@@ -2,7 +2,7 @@
 <html lang="vi" data-theme="dark">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>R1 Control</title>
 <!-- Inject theme trước khi paint để tránh flash -->
 <script>(function(){try{var t=localStorage.getItem('r1-theme')||'dark';document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
@@ -57,7 +57,10 @@ body{background:var(--body-bg);color:var(--fg);
   transition:background .3s,color .25s;}
 
 /* ── APP FRAME ─────────────────────────────────── */
-.app{width:100%;max-width:460px;height:100vh;height:100dvh;display:flex;flex-direction:column;
+/* position:relative so the floating buttons can anchor to THIS frame rather than the viewport --
+   on a wide screen the frame is a centred 720px column, and viewport-anchored buttons ended up
+   hovering in the empty space to its right, visually detached from the panel they belong to. */
+.app{position:relative;width:100%;max-width:460px;height:100vh;height:100dvh;display:flex;flex-direction:column;
   background:var(--bg2);border-left:1px solid var(--line);border-right:1px solid var(--line);
   transition:background .3s,border-color .3s;}
 .panes{flex:1;display:flex;min-height:0;}
@@ -78,8 +81,11 @@ body{background:var(--body-bg);color:var(--fg);
 .head-right{margin-left:auto;display:flex;align-items:center;gap:8px;}
 /* theme toggle */
 .thm-btn{border:0;background:none;cursor:pointer;font-size:16px;padding:4px;
-  border-radius:7px;line-height:1;transition:background .15s;}
-.thm-btn:hover{background:var(--grad-dim);}
+  border-radius:7px;line-height:1;transition:background .15s;
+  display:grid;place-items:center;width:28px;height:28px;}
+/* Hover must stay behind (hover:hover) like every other hover rule in this file -- ungated, a
+   touchscreen applies it on first tap and needs a second tap to actually activate. */
+@media (hover:hover){.thm-btn:hover{background:var(--grad-dim);}}
 .thm-btn svg{width:16px;height:16px;display:block;}
 .logo svg{width:18px;height:18px;}
 .tbtn svg{width:14px;height:14px;display:block;margin:0 auto;}
@@ -88,23 +94,40 @@ body{background:var(--body-bg);color:var(--fg);
 /* icon sitting next to a text label inside a button */
 .btn-ico{display:inline-flex;vertical-align:-2px;margin-right:6px;}
 /* Trailing icon (text first, e.g. "Fetch devices"): the gap belongs on the other side, otherwise
-   the glyph sits flush against the last letter. Handled on the class so any button can put its
-   icon on either side and still be spaced like the rest. */
-.btn-ico:last-child{margin-right:0;margin-left:6px;}
+   the glyph sits flush against the last letter. Must be opted into explicitly -- this was once
+   keyed off :last-child, but a label is a text node and text nodes are not elements, so an icon
+   placed BEFORE the text was still the last *element* child and silently lost its right margin.
+   That is what glued the icon to "Restart app", "Mic thô" and "Mic + AGC". */
+.btn-ico.trail{margin-right:0;margin-left:6px;}
 .btn-ico svg{width:14px;height:14px;}
 /* status */
-.status{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--mut);}
-.status-dot{width:7px;height:7px;border-radius:50%;background:var(--ok);
-  box-shadow:0 0 8px rgba(34,197,94,.55);transition:.3s;}
-.status-dot.off{background:#2e3545;box-shadow:none;}
-[data-theme=light] .status-dot.off{background:#c0c8d8;}
+.status{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--mut);}
+
+/* ── Voice orb ─────────────────────────────────────
+   Ambient state indicator: 3 bars that read as a tiny waveform. Driven by data-state from the
+   real assistant state (voice_awake/voice_state via /api/state, polled every 1.5s) -- offline is
+   flat grey, idle-but-connected breathes slowly so the panel doesn't look dead, listening/speaking
+   swap in the matching accent color (blue = listening, matches .ib-wake; pink = speaking, matches
+   .ib-voice) and animate at a livelier tempo. Bar heights come from CSS custom properties so one
+   keyframe drives all three at staggered phases instead of three near-duplicate keyframes. */
+.voice-orb{display:flex;align-items:flex-end;gap:2px;width:16px;height:12px;flex-shrink:0;}
+.voice-orb span{flex:1;border-radius:1px;background:#2e3545;height:30%;
+  transition:background .3s;animation-timing-function:ease-in-out;animation-iteration-count:infinite;}
+[data-theme=light] .voice-orb span{background:#c0c8d8;}
+.voice-orb span:nth-child(2){animation-delay:.15s;}
+.voice-orb span:nth-child(3){animation-delay:.3s;}
+.voice-orb[data-state=idle] span{background:var(--ok);animation-name:orbBreathe;animation-duration:2.4s;}
+.voice-orb[data-state=listening] span{background:#3b82f6;animation-name:orbWave;animation-duration:.9s;}
+.voice-orb[data-state=speaking] span{background:#ec4899;animation-name:orbWave;animation-duration:.6s;}
+@keyframes orbBreathe{0%,100%{height:30%;opacity:.7;}50%{height:75%;opacity:1;}}
+@keyframes orbWave{0%,100%{height:25%;}50%{height:100%;}}
 
 /* ── TABS ──────────────────────────────────────── */
 .seg{display:flex;gap:4px;margin:10px 13px 2px;padding:4px;
   background:var(--card2);border:1px solid var(--line);border-radius:14px;}
 .seg button{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
   border:0;background:none;color:var(--mut);padding:9px 10px;border-radius:10px;
-  font-size:13px;font-weight:600;letter-spacing:.1px;transition:.18s;}
+  font-size:13px;font-weight:600;letter-spacing:.1px;transition:.18s;white-space:nowrap;}
 .seg button svg{width:15px;height:15px;flex-shrink:0;}
 .seg button.on{color:#fff;background:var(--grad);box-shadow:0 4px 14px rgba(232,69,60,.28);}
 .seg button:active{background:rgba(128,128,128,.1);}
@@ -117,37 +140,40 @@ body{background:var(--body-bg);color:var(--fg);
 .page{flex:1;overflow-y:auto;display:none;flex-direction:column;}
 .page.on{display:flex;}
 
-/* ── CHAT: floating button + right-side slide-in drawer ─────────── */
-#chatFab{position:fixed;right:18px;bottom:18px;z-index:150;display:flex;align-items:center;gap:7px;
-  border:0;border-radius:26px;padding:12px 17px;background:var(--grad);color:#fff;font-size:13px;
-  font-weight:700;cursor:pointer;box-shadow:0 8px 24px rgba(232,69,60,.42);
-  transition:transform .15s,opacity .2s;}
-#chatFab:active{transform:scale(.93);}
-#chatFab svg{width:17px;height:17px;}
+/* ── FLOATING BUTTONS (chat + log) ───────────────────
+   absolute, not fixed: they belong to the .app frame (see its position:relative). Under `fixed`
+   they anchored to the viewport, which is identical to the frame on a phone but leaves them
+   stranded in the empty gutter beside the centred 720px column on a desktop. */
+.fab{position:absolute;right:18px;z-index:150;display:flex;align-items:center;gap:7px;
+  border:0;border-radius:26px;padding:12px 17px;font-size:13px;min-height:44px;
+  font-weight:700;cursor:pointer;transition:transform .15s,opacity .2s;}
+.fab:active{transform:scale(.93);}
+.fab svg{width:17px;height:17px;}
 /* Either drawer hides BOTH buttons -- the drawer covers the right side of the screen, so a button
    left visible would float on top of it. */
-body.chat-open #chatFab,body.log-open #chatFab{opacity:0;pointer-events:none;}
-/* Second FAB, stacked above the chat one (chat sits at bottom:18 and is ~44px tall). */
-#logFab{position:fixed;right:18px;bottom:74px;z-index:150;display:flex;align-items:center;gap:7px;
-  border:0;border-radius:26px;padding:12px 17px;background:var(--bg2);color:var(--fg);font-size:13px;
-  font-weight:700;cursor:pointer;border:1px solid var(--line);box-shadow:0 6px 18px rgba(0,0,0,.34);
-  transition:transform .15s,opacity .2s;}
-#logFab:active{transform:scale(.93);}
-#logFab svg{width:17px;height:17px;}
+body.chat-open .fab,body.log-open .fab{opacity:0;pointer-events:none;}
+/* Get out of the way while the user is scrolling down. The buttons sit over a scrollable settings
+   list, so at rest they permanently cover whatever control happens to be under them (the Equalizer
+   toggle, the LED preview buttons). Hiding on scroll-down and coming back on scroll-up (or once
+   scrolling stops) means nothing stays occluded. */
+body.fab-hide .fab{opacity:0;pointer-events:none;transform:translateY(12px);}
+#chatFab{bottom:18px;background:var(--grad);color:#fff;box-shadow:0 8px 24px rgba(232,69,60,.42);}
+/* Stacked above the chat one (chat sits at bottom:18 and is ~44px tall). */
+#logFab{bottom:74px;background:var(--bg2);color:var(--fg);
+  border:1px solid var(--line);box-shadow:0 6px 18px rgba(0,0,0,.34);}
 #logFab .dot{width:7px;height:7px;border-radius:50%;background:#ef4444;display:none;}
 #logFab.haserr .dot{display:block;}
-body.chat-open #logFab,body.log-open #logFab{opacity:0;pointer-events:none;}
-#logDrawer{touch-action:pan-y;position:fixed;top:0;right:0;width:460px;max-width:96vw;height:100vh;height:100dvh;z-index:160;
+/* Shared shape for both slide-in drawers (chat + log): same size, same off-screen/open transition,
+   same "shadow only while open" trick (a closed drawer is still rendered, just pushed off-screen --
+   so its left-facing shadow would otherwise spill back onto the visible right edge; invisible on
+   dark, an obvious black gradient on light, and doubled since both drawers do it). */
+.drawer{touch-action:pan-y;position:fixed;top:0;right:0;width:460px;max-width:96vw;height:100vh;height:100dvh;z-index:160;
   background:var(--bg2);border-left:1px solid var(--line);
   display:flex;flex-direction:column;transform:translateX(100%);
-  /* A closed drawer is still rendered, just pushed off-screen -- so its left-facing shadow
-     spilled back onto the visible right edge. Invisible against the dark theme, an obvious
-     black gradient against the light one (and doubled, since both drawers do it). Shadow
-     only while open; visibility hidden afterwards so it also drops out of the tab order. */
   box-shadow:none;visibility:hidden;pointer-events:none;
   transition:transform .24s ease,box-shadow .24s ease,visibility 0s .24s;
   overscroll-behavior:contain;}
-#logDrawer.open{transform:translateX(0);visibility:visible;pointer-events:auto;box-shadow:-14px 0 44px rgba(0,0,0,.5);
+.drawer.open{transform:translateX(0);visibility:visible;pointer-events:auto;box-shadow:-14px 0 44px rgba(0,0,0,.5);
   transition:transform .24s ease,box-shadow .24s ease,visibility 0s;}
 #logList{flex:1;overflow:auto;padding:10px 12px;font-family:ui-monospace,'SF Mono',monospace;
   font-size:11px;line-height:1.5;overscroll-behavior:contain;}
@@ -160,26 +186,14 @@ body.chat-open #logFab,body.log-open #logFab{opacity:0;pointer-events:none;}
 #chatBackdrop,#logBackdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:158;opacity:0;visibility:hidden;pointer-events:none;
   transition:opacity .22s,visibility .22s;}
 #chatBackdrop.open,#logBackdrop.open{opacity:1;visibility:visible;pointer-events:auto;}
-#chatDrawer{touch-action:pan-y;position:fixed;top:0;right:0;width:460px;max-width:96vw;height:100vh;height:100dvh;z-index:160;
-  background:var(--bg2);border-left:1px solid var(--line);
-  display:flex;flex-direction:column;transform:translateX(100%);
-  /* A closed drawer is still rendered, just pushed off-screen -- so its left-facing shadow
-     spilled back onto the visible right edge. Invisible against the dark theme, an obvious
-     black gradient against the light one (and doubled, since both drawers do it). Shadow
-     only while open; visibility hidden afterwards so it also drops out of the tab order. */
-  box-shadow:none;visibility:hidden;pointer-events:none;
-  transition:transform .24s ease,box-shadow .24s ease,visibility 0s .24s;
-  overscroll-behavior:contain;}
-#chatDrawer.open{transform:translateX(0);visibility:visible;pointer-events:auto;box-shadow:-14px 0 44px rgba(0,0,0,.5);
-  transition:transform .24s ease,box-shadow .24s ease,visibility 0s;}
 .chat-head{display:flex;align-items:center;gap:10px;padding:13px 14px 11px;
   min-height:var(--topbar-h);border-bottom:1px solid var(--line);}
 /* Same logo as the home header -- only the glow is dropped. Sizing it down here was what
    made the drawer icons look smaller than the home one. */
 .chat-head .logo{box-shadow:none;}
 .chat-head h3{font-size:14px;font-weight:700;flex:1;}
-.chat-close{border:0;background:none;color:var(--mut);font-size:19px;cursor:pointer;padding:2px 7px;
-  border-radius:7px;line-height:1;}
+.chat-close{border:0;background:none;color:var(--mut);font-size:19px;cursor:pointer;padding:0;
+  border-radius:7px;line-height:1;display:grid;place-items:center;width:32px;height:32px;}
 .chat-close:active{background:var(--grad-dim);}
 
 
@@ -207,10 +221,41 @@ body.chat-open #logFab,body.log-open #logFab{opacity:0;pointer-events:none;}
 .row label{display:flex;align-items:center;gap:6px;}
 .row label.wide{flex:0 0 132px;}
 .row{display:flex;align-items:center;gap:10px;margin:11px 0;}
-.row label{flex:0 0 90px;color:var(--fg);font-size:13px;opacity:.75;}
+/* 90px was sized against English labels and wrapped the longer Vietnamese ones ("Khuếch đại tối
+   đa") onto a second line, which pushed that row taller and broke the column alignment with the
+   rows above it. Widened to fit the longest label on one line; the controls beside it still have
+   room at 360px. */
+.row label{flex:0 0 114px;color:var(--fg);font-size:13px;opacity:.75;}
 .row .val{flex:0 0 46px;text-align:right;font-weight:700;font-size:13px;
   font-variant-numeric:tabular-nums;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
 .hint{font-size:11px;color:var(--mut);line-height:1.5;padding:3px 0 1px;}
+/* Progressive disclosure for the long explanations: every card carried a 150-280 character wall of
+   text, which made Settings a very long scroll and buried the controls. The first sentence stays
+   visible; the rest folds behind a tap. */
+.hint details{margin-top:3px;}
+.hint summary{color:var(--a1);cursor:pointer;font-weight:600;list-style:none;
+  display:inline-flex;align-items:center;gap:3px;padding:3px 0;}
+.hint summary::-webkit-details-marker{display:none;}
+.hint summary:after{content:'';width:0;height:0;border:3.5px solid transparent;
+  border-top-color:currentColor;margin-top:2px;transition:transform .18s;}
+.hint details[open] summary:after{transform:rotate(180deg);margin-top:-2px;}
+.hint details p{margin-top:2px;}
+
+/* ── COLLAPSIBLE SAVED LIST ─────────────────────────
+   The Home Assistant saved-device list grows one row per entity with no ceiling, so a dozen
+   devices pushed the Wake word and Ứng dụng cards far below the fold. Collapsed behind a count by
+   default, and capped in height so even a long list cannot take over the page. */
+.saved-block{margin-top:9px;border-top:1px solid var(--line);padding-top:9px;}
+.saved-block summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;padding:2px 0;}
+.saved-block summary::-webkit-details-marker{display:none;}
+.saved-block summary h2{font-size:10.5px;color:var(--mut);text-transform:uppercase;
+  letter-spacing:.9px;font-weight:700;}
+.saved-block summary:after{content:'';width:0;height:0;border:4px solid transparent;
+  border-top-color:var(--mut);margin-top:4px;transition:transform .18s;}
+.saved-block[open] summary:after{transform:rotate(180deg);margin-top:-4px;}
+.saved-count{margin-left:auto;font-size:11px;font-weight:700;color:var(--a1);
+  background:var(--grad-dim);border-radius:9px;padding:2px 8px;font-variant-numeric:tabular-nums;}
+#haSaved{max-height:236px;overflow:auto;overscroll-behavior:contain;margin-top:5px;}
 
 /* ── RANGE horizontal ───────────────────────────── */
 input[type=range]{-webkit-appearance:none;appearance:none;flex:1;height:4px;border-radius:4px;
@@ -247,7 +292,10 @@ input[type=range]:active::-webkit-slider-thumb{box-shadow:0 0 0 5px rgba(232,69,
    also matches `label.sw` and would otherwise stretch the track to 90px. */
 .sw.sw-sm{width:34px;height:20px;flex:0 0 34px;margin:0;}
 .sw.sw-sm span{border-radius:10px;}
-.sw.sw-sm span:before{width:16px;height:16px;}
+/* top/left must shrink with the knob. The 2px inherited from the full-size switch centred a 20px
+   knob in a 24px track; against this 18px track (20px minus the 1px borders) a 16px knob at top:2
+   left exactly 0px below it, so the knob sat visibly low. 1px centres it. */
+.sw.sw-sm span:before{width:16px;height:16px;top:1px;left:1px;}
 .sw.sw-sm input:checked+span:before{transform:translateX(14px);}
 
 /* ── DRAG-REORDER (news checklist) ─────────────── */
@@ -266,6 +314,9 @@ input[type=range]:active::-webkit-slider-thumb{box-shadow:0 0 0 5px rgba(232,69,
 .segsel button{flex:1;border:0;background:none;color:var(--mut);padding:6px 4px;
   border-radius:6px;font-weight:600;font-size:12px;cursor:pointer;transition:.15s;}
 .segsel button.on{background:var(--grad);color:#fff;}
+/* Second line inside a segmented option ("Nabi ơi" / "(Beta)"): a maturity tag, so it reads a
+   step quieter than the label it hangs under and never competes with it. */
+.seg-tag{display:block;font-size:9.5px;font-weight:600;opacity:.62;line-height:1.25;margin-top:1px;}
 
 /* ── SELECT ────────────────────────────────────── */
 /* Native arrow dropped for a drawn one: the stock control renders its arrow hard against the
@@ -288,9 +339,10 @@ select::-ms-expand{display:none;}
   border-radius:7px;padding:8px 10px;font-size:13px;min-width:0;outline:none;resize:vertical;
   min-height:110px;line-height:1.5;font-family:inherit;}
 .codein-area:focus{border-color:rgba(232,69,60,.45);}
-.tbtn{flex:0 0 32px;background:var(--grad-dim);color:var(--a1);
-  border:1px solid rgba(232,69,60,.2);border-radius:7px;padding:5px;
-  font-weight:700;font-size:13px;cursor:pointer;transition:.15s;}
+.tbtn{flex:0 0 32px;width:32px;height:32px;background:var(--grad-dim);color:var(--a1);
+  border:1px solid rgba(232,69,60,.2);border-radius:7px;padding:0;
+  font-weight:700;font-size:13px;cursor:pointer;transition:.15s;
+  display:grid;place-items:center;}
 .tbtn:active{background:rgba(232,69,60,.25);}
 
 /* ── EQ LABELS ──────────────────────────────────── */
@@ -336,15 +388,20 @@ select::-ms-expand{display:none;}
 /* Pane is a column: head (player + search) pinned, list scrolls under it. */
 .media-head{flex-shrink:0;}
 .media-scroll{flex:1;overflow-y:auto;min-height:0;padding:0 13px var(--fab-clear);}
-.media-search{position:relative;display:flex;align-items:center;padding:10px 13px;}
+/* --ms-pad is the container's own horizontal padding; the overlaid icons offset from it so they
+   keep the same inset INSIDE the input no matter what padding the container runs. The Home
+   Assistant search reuses this block with padding:0 and, while the offsets were hardcoded for
+   13px, its magnifier ended up 3px UNDER the text instead of clear of it. */
+.media-search{--ms-pad:13px;position:relative;display:flex;align-items:center;padding:10px var(--ms-pad);}
+.media-search.bare{--ms-pad:0px;padding:0;}
 .media-search input{flex:1;padding-left:32px;padding-right:32px;}
-.ms-clear{position:absolute;right:18px;border:0;background:none;color:var(--mut);cursor:pointer;
+.ms-clear{position:absolute;right:calc(var(--ms-pad) + 5px);border:0;background:none;color:var(--mut);cursor:pointer;
   padding:5px;border-radius:50%;display:grid;place-items:center;}
 .ms-clear svg{width:13px;height:13px;display:block;}
 .ms-clear[hidden]{display:none;}
 .ms-clear:active{background:var(--grad-dim);color:var(--a1);}
-.ms-icon{position:absolute;left:22px;width:15px;height:15px;color:var(--mut);pointer-events:none;}
-.ms-spin{position:absolute;right:22px;width:15px;height:15px;color:var(--a1);pointer-events:none;
+.ms-icon{position:absolute;left:calc(var(--ms-pad) + 9px);width:15px;height:15px;color:var(--mut);pointer-events:none;}
+.ms-spin{position:absolute;right:calc(var(--ms-pad) + 9px);width:15px;height:15px;color:var(--a1);pointer-events:none;
   animation:li-spin 0.9s linear infinite;}
 .ms-spin[hidden]{display:none;}
 .list-item{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line);
@@ -423,8 +480,37 @@ select::-ms-expand{display:none;}
 /* Phone-width drawers go edge to edge: a 4vw sliver of dimmed page behind them just wastes
    horizontal space on a screen this narrow. */
 @media (max-width: 620px) {
-  #chatDrawer,#logDrawer{width:100%;max-width:100%;}
+  .drawer{width:100%;max-width:100%;}
 }
+
+/* Text fields read as cramped on a phone: 12.5px was sized for a desktop-width settings row, and
+   at phone width it's the smallest text on the whole page. Bumped to the general body size (14px)
+   with a bit more padding, which also gives every text input a real ~40px touch target. */
+@media (max-width: 480px) {
+  .codein,.media-search input{font-size:14px;padding:9px 10px;}
+  .media-search input{padding-left:34px;padding-right:34px;}
+  .inbar input{font-size:15px;}
+  /* 44x44 minimum hit area (measured 22 controls under it: selects at 31px, icon buttons at 32px,
+     the theme toggle at 28px). Height only -- widths are already driven by the row layout. */
+  .codein,select,.btn,.tbtn,.segsel button,.seg button{min-height:44px;}
+  .tbtn{flex:0 0 44px;width:44px;height:44px;}
+  .thm-btn,.chat-close{width:44px;height:44px;}
+  .inbar button{flex:0 0 44px;height:44px;}
+  /* The switch is deliberately a small 44x26 graphic; grow only its touch area, not its look. */
+  .sw:after{content:'';position:absolute;left:0;right:0;top:-9px;bottom:-9px;}
+  /* "Media Player" was the only two-word tab and wrapped to a second line, making that tab taller
+     than its siblings. Drop the second word rather than shrink the type. */
+  .seg-long{display:none;}
+}
+
+/* A status line that has nothing to say should not hold a column open: these rows pair a button
+   with a `flex:1` status span, so an empty span left the button stranded at half width looking
+   like a broken layout. */
+.row .hint:empty{display:none;}
+
+/* Monospace is right for LED effect codes and keys, wrong for prose-ish fields -- a search box
+   rendering "Tìm bài hát…" in SF Mono reads like a terminal, not a search. */
+.codein.ui{font-family:inherit;}
 
 /* ── PRESS / HOVER FEEDBACK ────────────────────────
    The reset at the top of this file sets -webkit-tap-highlight-color:transparent, which removes
@@ -469,14 +555,14 @@ select:active,select:focus{box-shadow:0 0 0 4px var(--grad-dim);}
   </div>
   <div class="head-right">
     <button class="thm-btn" id="thmBtn" onclick="toggleTheme()" title="Đổi theme" aria-label="Đổi theme sáng/tối"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z"/></svg></button>
-    <div class="status"><div class="status-dot" id="sti"></div><span id="st">online</span></div>
+    <div class="status"><div class="voice-orb" id="vorb" data-state="offline" aria-hidden="true"><span></span><span></span><span></span></div><span id="st">offline</span></div>
   </div>
 </div>
 
 <div class="seg">
   <button id="tset" class="on" onclick="tab('set')"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="10" cy="10" r="3"/><circle cx="10" cy="10" r="1" fill="currentColor" stroke="none"/><line x1="10" y1="2" x2="10" y2="4.2"/><line x1="10" y1="15.8" x2="10" y2="18"/><line x1="2" y1="10" x2="4.2" y2="10"/><line x1="15.8" y1="10" x2="18" y2="10"/><line x1="4.6" y1="4.6" x2="6.1" y2="6.1"/><line x1="13.9" y1="13.9" x2="15.4" y2="15.4"/><line x1="15.4" y1="4.6" x2="13.9" y2="6.1"/><line x1="6.1" y1="13.9" x2="4.6" y2="15.4"/></svg>Settings</button>
   <button id="tsetup" onclick="tab('setup')"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M10 3v4M10 13v4M3 10h4M13 10h4"/><circle cx="10" cy="10" r="2.2"/></svg>Setup</button>
-  <button id="tmedia" onclick="tab('media')"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M8 3v9.2a3 3 0 101.5 2.6V6.9l6-1.2v6.5a3 3 0 101.5 2.6V3l-9 1.8V3z"/></svg>Media Player</button>
+  <button id="tmedia" onclick="tab('media')"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M8 3v9.2a3 3 0 101.5 2.6V6.9l6-1.2v6.5a3 3 0 101.5 2.6V3l-9 1.8V3z"/></svg>Media<span class="seg-long">&nbsp;Player</span></button>
 </div>
 
 <div class="panes">
@@ -495,11 +581,11 @@ select:active,select:focus{box-shadow:0 0 0 4px var(--grad-dim);}
     </div>
     <div class="card">
       <div class="ch"><span class="icon-badge ib-ai"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="15" height="12" rx="1.5"/><line x1="6" y1="8" x2="14" y2="8"/><line x1="6" y1="11" x2="11" y2="11"/></svg></span><h2>Bản tin</h2><label class="sw"><input type="checkbox" id="newsOn" aria-label="Bật/tắt bản tin tự động"><span></span></label></div>
-      <div class="row"><label>Giờ đọc</label><input type="time" class="codein" id="newsTime" style="flex:1"></div>
+      <div class="row"><label>Giờ đọc</label><input type="time" class="codein ui" id="newsTime" style="flex:1"></div>
       <div id="newsCats"></div>
       <div class="row"><label>Giọng đọc</label><select id="newsVoice" style="flex:1"><option>(đang tải…)</option></select></div>
       <div class="row" style="gap:8px"><button class="btn rec" style="flex:1;width:auto" onclick="saveNews()">Save</button><button class="btn rec" style="flex:1;width:auto" onclick="testNews()">Phát thử</button></div>
-      <div class="hint" id="newsStat">Đúng giờ đã hẹn robot tự đọc bản tin: nhạc hiệu đầu, các mục đã bật theo đúng thứ tự (kéo ⠿ để sắp xếp), nhạc hiệu cuối. Giọng đọc riêng cho bản tin, không ảnh hưởng giọng hội thoại thường ở trên. Soạn xong mất ~20-45 giây. Nói "đọc bản tin" bất cứ lúc nào cũng ra bản tin này.</div>
+      <div class="hint" id="newsStat">Đúng giờ đã hẹn robot tự đọc bản tin theo các mục đã bật (kéo ⠿ để sắp xếp thứ tự).<details><summary>Chi tiết</summary><p>Thứ tự phát: nhạc hiệu đầu, các mục đã bật, nhạc hiệu cuối. Giọng đọc riêng cho bản tin, không ảnh hưởng giọng hội thoại thường ở trên. Robot đọc ngay từng câu trong lúc bản tin còn đang được soạn, nên chỉ ~12 giây là có tiếng. Nói "đọc bản tin" bất cứ lúc nào cũng ra bản tin này.</p></details></div>
     </div>
     <div class="card">
       <div class="ch"><span class="icon-badge ib-eq"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><line x1="5" y1="2" x2="5" y2="18"/><circle cx="5" cy="7" r="1.8" fill="currentColor" stroke="none"/><line x1="10" y1="2" x2="10" y2="18"/><circle cx="10" cy="13" r="1.8" fill="currentColor" stroke="none"/><line x1="15" y1="2" x2="15" y2="18"/><circle cx="15" cy="9" r="1.8" fill="currentColor" stroke="none"/></svg></span><h2>Equalizer</h2><label class="sw"><input type="checkbox" id="eqon" aria-label="Bật/tắt Equalizer"><span></span></label></div>
@@ -522,7 +608,7 @@ select:active,select:focus{box-shadow:0 0 0 4px var(--grad-dim);}
       <div class="ch"><span class="icon-badge ib-agc"><svg viewBox="0 0 20 20" fill="currentColor"><rect x="2" y="14" width="2.4" height="4" rx="1"/><rect x="6.2" y="11" width="2.4" height="7" rx="1"/><rect x="10.4" y="7" width="2.4" height="11" rx="1"/><rect x="14.6" y="3" width="2.4" height="15" rx="1"/></svg></span><h2>Khuếch đại mic (AGC)</h2><label class="sw"><input type="checkbox" id="agc" aria-label="Bật/tắt khuếch đại mic (AGC)"><span></span></label></div>
       <div class="row"><label>Mức đích</label><input type="range" id="agct" min="0.1" max="0.6" step="0.05"><span class="val" id="agctv">–</span></div>
       <div class="row"><label>Khuếch đại tối đa</label><input type="range" id="agcm" min="0" max="100" step="5"><span class="val" id="agcmv">–</span></div>
-      <div class="hint">Tự động tăng âm lượng micro trước khi gửi lên server nhận dạng giọng nói. Hữu ích khi nói từ xa. Mặc định bật, mức đích 0.35, khuếch đại tối đa 30×. Thay đổi có hiệu lực từ lần wake kế tiếp.</div>
+      <div class="hint">Tự động tăng âm lượng micro trước khi gửi lên server — hữu ích khi nói từ xa.<details><summary>Chi tiết</summary><p>Mặc định bật, mức đích 0.35, khuếch đại tối đa 30×. Thay đổi có hiệu lực từ lần wake kế tiếp.</p></details></div>
     </div>
     <div class="card">
       <div class="ch"><span class="icon-badge ib-mic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="7.5" y="2" width="5" height="9" rx="2.5" fill="currentColor" stroke="none"/><path d="M4.5 9.5a5.5 5.5 0 0011 0"/><line x1="10" y1="15" x2="10" y2="18"/><line x1="7" y1="18" x2="13" y2="18"/></svg></span><h2>Kiểm tra mic</h2></div>
@@ -531,7 +617,7 @@ select:active,select:focus{box-shadow:0 0 0 4px var(--grad-dim);}
         <button class="btn rec" id="recAgc" style="flex:1;width:auto" onclick="toggleRec(true)"><span class="btn-ico"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="6"/></svg></span>Mic + AGC</button>
       </div>
       <audio id="recAudio" controls style="width:100%;margin-top:12px;height:36px" hidden></audio>
-      <div class="hint" id="recHint" style="margin-top:8px">Bấm để ghi âm trực tiếp từ loa R1 rồi nghe lại. <b>Mic thô</b> — âm thanh gốc chưa xử lý. <b>Mic + AGC</b> — đã áp dụng khuếch đại theo slider bên trên. Tối đa 30 giây, 16 kHz.</div>
+      <div class="hint" id="recHint" style="margin-top:8px">Bấm để ghi âm trực tiếp từ mic R1 rồi nghe lại.<details><summary>Chi tiết</summary><p><b>Mic thô</b> — âm thanh gốc chưa xử lý. <b>Mic + AGC</b> — đã áp dụng khuếch đại theo slider bên trên. Tối đa 30 giây, 16 kHz.</p></details></div>
     </div>
     <div class="card">
       <div class="ch"><span class="icon-badge ib-led"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2a5 5 0 00-3 9c.6.5 1 1.2 1 2h4c0-.8.4-1.5 1-2a5 5 0 00-3-9z"/><line x1="8.3" y1="16" x2="11.7" y2="16"/><line x1="8.6" y1="18" x2="11.4" y2="18"/></svg></span><h2>Đèn LED</h2></div>
@@ -545,7 +631,7 @@ select:active,select:focus{box-shadow:0 0 0 4px var(--grad-dim);}
       <div class="ch"><span class="icon-badge ib-sys"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="10" cy="10" r="3"/><circle cx="10" cy="10" r="1" fill="currentColor" stroke="none"/><line x1="10" y1="2" x2="10" y2="4.2"/><line x1="10" y1="15.8" x2="10" y2="18"/><line x1="2" y1="10" x2="4.2" y2="10"/><line x1="15.8" y1="10" x2="18" y2="10"/><line x1="4.6" y1="4.6" x2="6.1" y2="6.1"/><line x1="13.9" y1="13.9" x2="15.4" y2="15.4"/><line x1="15.4" y1="4.6" x2="13.9" y2="6.1"/><line x1="6.1" y1="13.9" x2="4.6" y2="15.4"/></svg></span><h2>Hệ thống</h2></div>
       <div class="row"><label>Sample rate</label>
         <div class="segsel" style="flex:1"><button id="sr24" onclick="setSr(24000)">24 kHz</button><button id="sr48" onclick="setSr(48000)">48 kHz</button></div></div>
-      <div class="hint" style="margin:-2px 0 0">Tốc độ lấy mẫu audio phát lại. Dùng 48 kHz (mặc định) — chuyển sang 24 kHz nếu âm thanh bị giật hoặc đơ. Phải khớp với cài đặt server. Đổi cần restart app.</div>
+      <div class="hint" style="margin:-2px 0 0">Tốc độ lấy mẫu audio phát lại. Dùng 48 kHz (mặc định).<details><summary>Chi tiết</summary><p>Chuyển sang 24 kHz nếu âm thanh bị giật hoặc đơ. Phải khớp với cài đặt server. Đổi cần restart app.</p></details></div>
     </div>
   </div>
 </div>
@@ -582,19 +668,21 @@ select:active,select:focus{box-shadow:0 0 0 4px var(--grad-dim);}
       <div class="ch"><span class="icon-badge ib-srv"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 2 2 8v10h6v-6h4v6h6V8z"/></svg></span><h2>Home Assistant</h2></div>
       <div class="row"><label>HA URL</label><input class="codein" id="haUrl" placeholder="http://homeassistant.local:8123"></div>
       <div class="row"><label>Token</label><input class="codein" id="haTok" type="password" placeholder="long-lived token"><button class="tbtn" onclick="togHaKey()" aria-label="Hiện/ẩn HA token"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.6"/></svg></button></div>
-      <div class="row" style="gap:8px"><button class="btn rec" style="flex:1;width:auto" onclick="fetchHaDevices()">Fetch devices<span class="btn-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 11-2.3-5.6"/><path d="M20 3.5V9h-5.5"/></svg></span></button><button class="btn rec" style="flex:1;width:auto" onclick="testHa()">Test</button></div>
-      <div class="media-search" style="padding:0;margin:8px 0 0"><svg class="ms-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg><input class="codein" id="haSearch" placeholder="tên hoặc entity_id" oninput="renderHaPick()"></div>
+      <div class="row" style="gap:8px"><button class="btn rec" style="flex:1;width:auto" onclick="fetchHaDevices()">Fetch devices<span class="btn-ico trail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 11-2.3-5.6"/><path d="M20 3.5V9h-5.5"/></svg></span></button><button class="btn rec" style="flex:1;width:auto" onclick="testHa()">Test</button></div>
+      <div class="media-search bare" style="margin:8px 0 0"><svg class="ms-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg><input class="codein ui" id="haSearch" placeholder="tên hoặc entity_id" oninput="renderHaPick()"></div>
       <div class="segsel" id="haDomains" style="flex:1;margin-top:6px;flex-wrap:wrap"></div>
       <div id="haPick" style="max-height:220px;overflow:auto;margin-top:8px"></div>
       <div class="row" style="margin-top:6px"><button class="btn rec" style="flex:1;width:auto" onclick="saveHa()">Save</button></div>
       <div class="hint" id="haStat">Nhập HA URL + token rồi Fetch để chọn thiết bị.</div>
-      <div class="ch" style="margin-top:8px"><h2>Đã lưu</h2></div>
-      <div id="haSaved"></div>
+      <details class="saved-block" id="haSavedBox">
+        <summary><h2>Đã lưu</h2><span class="saved-count" id="haSavedCount">0</span></summary>
+        <div id="haSaved"></div>
+      </details>
     </div>
 
     <div class="card">
       <div class="ch"><span class="icon-badge ib-wake"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="4" cy="16" r="1.3" fill="currentColor" stroke="none"/><path d="M7 13a6 6 0 018 0"/><path d="M9.3 15.3a3 3 0 014 0"/></svg></span><h2>Wake word</h2></div>
-      <div class="row"><label>Engine</label><div class="segsel" style="flex:1"><button id="weAlexa" onclick="setWake('alexa')">Alexa</button><button id="weNabu" onclick="setWake('nabu')">OK Nabu</button><button id="weMaiOi" onclick="setWake('mai_oi')">Na Bi ơi</button></div></div>
+      <div class="row"><label>Engine</label><div class="segsel" style="flex:1"><button id="weAlexa" onclick="setWake('alexa')">Alexa</button><button id="weNabu" onclick="setWake('nabu')">OK Nabu</button><button id="weMaiOi" onclick="setWake('mai_oi')">Nabi ơi<span class="seg-tag">(Beta)</span></button></div></div>
       <div class="hint">Đổi engine cần restart app. Ngưỡng/độ nhạy bên dưới là của engine đang chọn.</div>
 
       <!-- Alexa (Snowboy): tunable sensitivity -->
@@ -607,14 +695,14 @@ select:active,select:focus{box-shadow:0 0 0 4px var(--grad-dim);}
 
       <!-- OK Nabu: cutoff is compiled into libmicro_wake_word_jni.so -> nothing to tune -->
       <div id="nabuWake">
-        <div class="hint">OK Nabu dùng model dựng sẵn với ngưỡng cố định trong thư viện — không chỉnh được (cũng là lý do nó rất ổn định). Nếu bị tự thức hoặc khó gọi, hãy đổi sang engine khác.</div>
+        <div class="hint">OK Nabu dùng ngưỡng cố định dựng sẵn trong thư viện — không chỉnh được.<details><summary>Chi tiết</summary><p>Đó cũng là lý do nó rất ổn định. Nếu bị tự thức hoặc khó gọi, hãy đổi sang engine khác.</p></details></div>
       </div>
 
-      <!-- Na Bi ơi (microWakeWord): tunable score threshold -->
+      <!-- Nabi ơi (microWakeWord, beta): tunable score threshold -->
       <div id="maiOiWake">
         <div class="row"><label>Ngưỡng</label><input type="range" id="moT" min="0" max="1" step="0.05"><span class="val" id="moTv">–</span></div>
-        <div class="hint">Đây là NGƯỠNG điểm số, không phải độ nhạy — NGƯỢC hướng với "Độ nhạy" của Alexa: thấp hơn = dễ kích hoạt hơn (nhạy hơn), cao hơn = chặt hơn (khó kích hoạt hơn). Mức 0.5 là cân bằng (thật đo được: dương ~0.95-1.0, âm khó ~0.00-0.02).</div>
-        <!-- speaking-threshold hidden: barge-in-while-speaking is disabled for Na Bi ơi, so this is a dead knob -->
+        <div class="hint">Đây là NGƯỠNG điểm số, không phải độ nhạy: thấp hơn = dễ kích hoạt hơn. Mức 0.5 là cân bằng.<details><summary>Chi tiết</summary><p>NGƯỢC hướng với "Độ nhạy" của Alexa — cao hơn = chặt hơn (khó kích hoạt hơn). Điểm thật đo được: dương ~0.95-1.0, âm khó ~0.00-0.02.</p></details></div>
+        <!-- speaking-threshold hidden: barge-in-while-speaking is disabled for Nabi ơi, so this is a dead knob -->
         <div style="display:none"><div class="row"><label>Khi phát âm</label><input type="range" id="moTs" min="0" max="1" step="0.05"><span class="val" id="moTsv">–</span></div></div>
       </div>
     </div>
@@ -648,7 +736,7 @@ select:active,select:focus{box-shadow:0 0 0 4px var(--grad-dim);}
     </div>
     <div class="media-search">
       <svg class="ms-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>
-      <input class="codein" id="mediaSearch" placeholder="Tìm bài hát…" oninput="onMediaSearchInput()">
+      <input class="codein ui" id="mediaSearch" placeholder="Tìm bài hát…" oninput="onMediaSearchInput()">
       <button class="ms-clear" id="mediaClear" onclick="clearMediaSearch()" aria-label="Xoá tìm kiếm" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       <svg class="ms-spin" id="mediaSpin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" hidden><circle cx="12" cy="12" r="9" stroke-dasharray="14 42"/></svg>
     </div>
@@ -658,12 +746,15 @@ select:active,select:focus{box-shadow:0 0 0 4px var(--grad-dim);}
   </div>
 </div>
 </div><!--panes-->
+
+<!-- Floating buttons live INSIDE .app so they track the panel frame, not the viewport. -->
+<button id="logFab" class="fab" aria-label="Mở nhật ký hoạt động"><span class="dot"></span><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 5h12M4 8.5h12M4 12h8M4 15.5h5"/></svg>Log</button>
+<button id="chatFab" class="fab" aria-label="Mở chat với robot"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M3 5a2 2 0 012-2h10a2 2 0 012 2v6a2 2 0 01-2 2H9l-4 3v-3H5a2 2 0 01-2-2V5z"/></svg>Chat</button>
 </div><!--app-->
 
 <!-- CHAT: floating button + right-side drawer -->
-<button id="logFab"><span class="dot"></span><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 5h12M4 8.5h12M4 12h8M4 15.5h5"/></svg>Log</button>
 <div id="logBackdrop" onclick="closeLog()"></div>
-<div id="logDrawer">
+<div id="logDrawer" class="drawer">
   <div class="chat-head">
     <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6h14M5 10h14M5 14h9M5 18h6"/></svg></div>
     <h3>Nhật ký hoạt động</h3>
@@ -675,9 +766,8 @@ select:active,select:focus{box-shadow:0 0 0 4px var(--grad-dim);}
     <button class="tbtn" onclick="logClear()" title="Xoá log" aria-label="Xoá log"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 7h14M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>
   </div>
 </div>
-<button id="chatFab"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M3 5a2 2 0 012-2h10a2 2 0 012 2v6a2 2 0 01-2 2H9l-4 3v-3H5a2 2 0 01-2-2V5z"/></svg>Chat</button>
 <div id="chatBackdrop" onclick="closeChat()"></div>
-<div id="chatDrawer">
+<div id="chatDrawer" class="drawer">
   <div class="chat-head"><div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4.5"/><circle cx="12" cy="3.5" r="1.2"/><path d="M9 13v1.5M15 13v1.5"/></svg></div><h3>Chat với robot</h3><button class="chat-close" onclick="closeChat()" aria-label="Đóng chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
   <div id="chat"><div class="empty">Chưa có tin nhắn.<br>Nhắn cho robot bên dưới 👇</div></div>
   <div class="inbar">
@@ -693,15 +783,17 @@ const SVG_MOON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strok
 const SVG_SUN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.4M12 19.6V22M2 12h2.4M19.6 12H22M5 5l1.7 1.7M17.3 17.3L19 19M19 5l-1.7 1.7M6.7 17.3L5 19"/></svg>';
 const SVG_DOT='<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="6"/></svg>';
 const SVG_STOP='<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6.5" y="6.5" width="11" height="11" rx="2"/></svg>';
-const SVG_PLAY_SM='<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>';
 const ICO=svg=>'<span class="btn-ico">'+svg+'</span>';
 const set=(k,v)=>fetch(`/api/set?key=${k}&value=${encodeURIComponent(v)}`,{method:'POST'});
 function restart(){if(confirm('Restart app?'))fetch('/api/restart',{method:'POST'});}
 function tab(t){['set','setup','media'].forEach(x=>{$('p'+x).classList.toggle('on',x===t);$('t'+x).classList.toggle('on',x===t);});
   try{localStorage.setItem('r1-tab',t);}catch(e){}
   if(t==='media')mediaPollStart();else mediaPollStop();}
-function openChat(){$('chatDrawer').classList.add('open');$('chatBackdrop').classList.add('open');document.body.classList.add('chat-open');setTimeout(()=>{const i=$('msg');if(i)i.focus();},60);}
-function closeChat(){$('chatDrawer').classList.remove('open');$('chatBackdrop').classList.remove('open');document.body.classList.remove('chat-open');}
+
+// ── Segmented-control helper ─────────────────────
+// Every segsel/tab group (wake engine, sample rate, log filter, ...) is "add .on to the matching
+// button, remove it from its siblings" -- this replaces N hand-written classList.toggle blocks.
+function activateSeg(ids,activeId){ids.forEach(id=>{const el=$(id);if(el)el.classList.toggle('on',id===activeId);});}
 
 
 // The floating buttons listen on pointerdown, not click. iOS swallows the first tap after a swipe
@@ -716,19 +808,28 @@ function bindFab(id,fn){
     fn();
   });
 }
-function toggleChat(){$('chatDrawer').classList.contains('open')?closeChat():openChat();}
+// ── Drawer factory ────────────────────────────────
+// Chat and Log are two independent slide-in drawers (right-side, swipe-to-close, own FAB) that
+// were previously each hand-wired: open/close/toggle + bindFab + attachSwipeClose duplicated
+// per drawer. One factory now owns that wiring; onOpen/onClose plug in the drawer-specific bits
+// (chat: focus the input; log: start/stop the poll timer).
+function createDrawer({drawerId,backdropId,fabId,bodyClass,onOpen,onClose}){
+  const open=()=>{$(drawerId).classList.add('open');$(backdropId).classList.add('open');
+    document.body.classList.add(bodyClass);if(onOpen)onOpen();};
+  const close=()=>{$(drawerId).classList.remove('open');$(backdropId).classList.remove('open');
+    document.body.classList.remove(bodyClass);if(onClose)onClose();};
+  const toggle=()=>$(drawerId).classList.contains('open')?close():open();
+  bindFab(fabId,toggle);
+  attachSwipeClose(drawerId,close);
+  return {open,close,toggle};
+}
 
 // ── Log drawer ────────────────────────────────────
 // Polls only while open (same idea as the Media tab): the panel already polls /api/state every
 // 1.5s, and this device has little headroom to spare. Fetches only entries newer than the last
 // seq seen, so a long session doesn't re-send the whole buffer every tick.
 let logSeq=0,logTimer=null,logRows=[],logMode='all';
-function openLog(){$('logDrawer').classList.add('open');$('logBackdrop').classList.add('open');
-  document.body.classList.add('log-open');logPoll();logTimer=setInterval(logPoll,1500);}
-function closeLog(){$('logDrawer').classList.remove('open');$('logBackdrop').classList.remove('open');
-  document.body.classList.remove('log-open');clearInterval(logTimer);logTimer=null;}
-function toggleLog(){$('logDrawer').classList.contains('open')?closeLog():openLog();}
-function logFilter(m){logMode=m;$('lfAll').classList.toggle('on',m==='all');$('lfErr').classList.toggle('on',m==='err');renderLogs();}
+function logFilter(m){logMode=m;activateSeg(['lfAll','lfErr'],m==='all'?'lfAll':'lfErr');renderLogs();}
 async function logPoll(){
   try{const j=await(await fetch('/api/logs?since='+logSeq)).json();
     if(j.items&&j.items.length){logRows=logRows.concat(j.items).slice(-500);renderLogs();}
@@ -748,7 +849,7 @@ function esc(t){return (t||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':
 async function logClear(){await fetch('/api/logs/clear',{method:'POST'});logRows=[];logSeq=0;renderLogs();}
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeChat();});
 function send(){const t=$('msg').value.trim();if(!t)return;fetch(`/api/say?text=${encodeURIComponent(t)}`,{method:'POST'});$('msg').value='';}
-function setSr(v){$('sr24').classList.toggle('on',v===24000);$('sr48').classList.toggle('on',v===48000);set('playback_sr',v);}
+function setSr(v){activateSeg(['sr24','sr48'],v===24000?'sr24':'sr48');set('playback_sr',v);}
 function testLed(key,id,state){fetch(`/api/set?key=${key}&value=${encodeURIComponent($(id).value)}`,{method:'POST'}).then(()=>fetch('/api/led?state='+state,{method:'POST'}));}
 
 // ── Theme toggle ──────────────────────────────────
@@ -860,7 +961,7 @@ async function testNews(){
   if(!ok){$('newsStat').textContent='✗ Lỗi lưu, chưa phát thử được.';return;}
   try{
     await fetch('/api/news/test',{method:'POST'});
-    $('newsStat').textContent='Đã gửi — robot sẽ nói "chờ tao soạn bản tin chút nha" rồi đọc sau ~20-45 giây (lần sau trong 30 phút thì phát ngay).';
+    $('newsStat').textContent='Đã gửi — robot sẽ nói "chờ tao soạn bản tin chút nha" rồi bắt đầu đọc sau ~12 giây, các câu sau nối tiếp trong lúc vẫn đang soạn.';
   }catch(e){$('newsStat').textContent='✗ Lỗi gọi phát thử.';}
 }
 
@@ -911,10 +1012,29 @@ function attachSwipeClose(id, close){
   el.addEventListener('pointerup',end);
   el.addEventListener('pointercancel',end);
 }
-bindFab('chatFab',toggleChat);
-bindFab('logFab',toggleLog);
-attachSwipeClose('chatDrawer',closeChat);
-attachSwipeClose('logDrawer',closeLog);
+const chatDrawer=createDrawer({drawerId:'chatDrawer',backdropId:'chatBackdrop',fabId:'chatFab',
+  bodyClass:'chat-open',onOpen:()=>setTimeout(()=>{const i=$('msg');if(i)i.focus();},60)});
+const logDrawer=createDrawer({drawerId:'logDrawer',backdropId:'logBackdrop',fabId:'logFab',
+  bodyClass:'log-open',onOpen:logOpenTick,onClose:()=>{clearInterval(logTimer);logTimer=null;}});
+function closeChat(){chatDrawer.close();}
+function closeLog(){logDrawer.close();}
+function logOpenTick(){logPoll();logTimer=setInterval(logPoll,1500);}
+
+// ── Auto-hide the FABs while scrolling ────────────
+// They float over a scrollable list, so at rest they cover whichever control lands beneath them.
+// Hide going down, bring them back on the way up or once scrolling settles. Bound to every
+// scrollable pane rather than the window -- the panes scroll, the page itself never does.
+let fabHideTimer=null,fabLastY=0;
+function onPaneScroll(e){
+  const y=e.target.scrollTop,down=y>fabLastY&&y>40;
+  fabLastY=y;
+  document.body.classList.toggle('fab-hide',down);
+  clearTimeout(fabHideTimer);
+  fabHideTimer=setTimeout(()=>document.body.classList.remove('fab-hide'),700);
+}
+['pset','psetup','mediaScroll'].forEach(id=>{
+  const el=$(id);if(el)el.addEventListener('scroll',onPaneScroll,{passive:true});
+});
 
 // ── Chat với timestamp (giờ thật lúc tin nhắn xảy ra, do server gửi lên) ──
 let lastSig='';
@@ -941,7 +1061,14 @@ const volPct=idx=>volSteps?Math.round(idx*100/volSteps):+idx;
 const volIdx=pct=>volSteps?Math.round(pct*volSteps/100):+pct;
 
 let eqInit=false;
+const VOICE_ORB_TEXT={idle:'online',listening:'Đang nghe…',speaking:'Đang trả lời…'};
+function updateVoiceOrb(s){
+  const vstate=!s.voice_awake?'idle':(s.voice_state==='SPEAKING'?'speaking':'listening');
+  $('vorb').dataset.state=vstate;
+  $('st').textContent=VOICE_ORB_TEXT[vstate];
+}
 function render(s){
+  updateVoiceOrb(s);
   if(s.volume_steps>0&&s.volume_steps!==volSteps){volSteps=s.volume_steps;$('vol').max=volSteps;}
   // Never redraw the slider mid-drag (same guard the LED fields use below): the poll landing a
   // moment after release is what made the value visibly jump back.
@@ -956,7 +1083,7 @@ function render(s){
   if(document.activeElement!==$('ledS'))$('ledS').value=s.led_speaking||'';
   if(document.activeElement!==$('ledM'))$('ledM').value=s.led_music||'';
   if(document.activeElement!==$('ledI'))$('ledI').value=s.led_idle||'';
-  $('sr24').classList.toggle('on',s.playback_sr==24000);$('sr48').classList.toggle('on',s.playback_sr==48000);
+  activateSeg(['sr24','sr48'],s.playback_sr==24000?'sr24':'sr48');
   $('eqon').checked=s.eq_enabled;
   if(s.eq&&!eqInit){eqInit=true;window.bands=s.eq.freqs.map((f,i)=>s.eq_bands[i]||0);
     $('eq').innerHTML=s.eq.freqs.map((f,i)=>{const hz=f>=1000?(f/1000)+'k':f;
@@ -992,9 +1119,7 @@ function render(s){
     renderNewsVoiceOptions();
   }
   // Display-only (reflect saved state; not user-editable inputs) — safe to refresh each poll.
-  $('weAlexa').classList.toggle('on',(s.wake_engine||'alexa')==='alexa');
-  $('weNabu').classList.toggle('on',s.wake_engine==='nabu');
-  $('weMaiOi').classList.toggle('on',s.wake_engine==='mai_oi');
+  activateSeg(WAKE_SEG_IDS,WAKE_SEG_ID[s.wake_engine||'alexa']);
   wakeUI(s.wake_engine||'alexa');
   $('moT').value=parseFloat(s.mai_oi_threshold||'0.5');$('moTv').textContent=s.mai_oi_threshold||'0.5';
   $('moTs').value=parseFloat(s.mai_oi_threshold_speaking||'0.5');$('moTsv').textContent=s.mai_oi_threshold_speaking||'0.5';
@@ -1002,15 +1127,26 @@ function render(s){
   if(sig!==lastSig){lastSig=sig;renderChat(s.chat);}
 }
 function onEq(i,v){bands[i]=parseInt(v);$('g'+i).textContent=(v/100).toFixed(0);set('eq_bands',bands.join(','));}
+
+// ── Slider-binding helper ─────────────────────────
+// A range input paired with a "current value" label, pushing to the server on every drag tick, is
+// the single most repeated pattern in Settings (wake sensitivity x2, Mai ơi threshold x2, AGC
+// target/max-gain). One binder replaces five near-identical oninput handlers; fmt controls both
+// the label text and what's sent (some keys want the formatted string, others the raw value).
+function bindSlider(rangeId,valId,key,fmt,sendFmt){
+  $(rangeId).oninput=e=>{const v=e.target.value;$(valId).textContent=fmt(v);set(key,(sendFmt||fmt)(v));};
+}
+const fmt2=v=>(+v).toFixed(2);
+const fmtX=v=>(+v).toFixed(0)+'x';
 $('vol').oninput=e=>{const p=volPct(e.target.value);$('volv').textContent=p+'%';set('volume',p);};
-$('ws').oninput=e=>{$('wsv').textContent=(+e.target.value).toFixed(2);set('wake_sensitivity',(+e.target.value).toFixed(2));};
-$('wss').oninput=e=>{$('wssv').textContent=(+e.target.value).toFixed(2);set('wake_sensitivity_speaking',(+e.target.value).toFixed(2));};
-$('moT').oninput=e=>{$('moTv').textContent=(+e.target.value).toFixed(2);set('mai_oi_threshold',(+e.target.value).toFixed(2));};
-$('moTs').oninput=e=>{$('moTsv').textContent=(+e.target.value).toFixed(2);set('mai_oi_threshold_speaking',(+e.target.value).toFixed(2));};
+bindSlider('ws','wsv','wake_sensitivity',fmt2);
+bindSlider('wss','wssv','wake_sensitivity_speaking',fmt2);
+bindSlider('moT','moTv','mai_oi_threshold',fmt2);
+bindSlider('moTs','moTsv','mai_oi_threshold_speaking',fmt2);
+bindSlider('agct','agctv','agc_target',fmt2,v=>v);
+bindSlider('agcm','agcmv','agc_max_gain',fmtX,v=>v);
 $('msrc').onchange=e=>set('mic_source',e.target.value);
 $('agc').onchange=e=>set('agc_enabled',e.target.checked);
-$('agct').oninput=e=>{$('agctv').textContent=(+e.target.value).toFixed(2);set('agc_target',e.target.value);};
-$('agcm').oninput=e=>{$('agcmv').textContent=(+e.target.value).toFixed(0)+'x';set('agc_max_gain',e.target.value);};
 $('eqon').onchange=e=>set('eq_enabled',e.target.checked);
 
 // ── Test mic A/B ─────────────────────────────────
@@ -1035,7 +1171,7 @@ function stopRec(){
   clearInterval(recTimer);recTimer=null;const wasAgc=recActive;recReset();
   fetch('/api/mic/stop',{method:'POST'}).then(r=>r.json()).then(j=>{
     if(j.bytes>0){const a=$('recAudio');a.src='/api/mic/rec.wav?t='+Date.now();a.hidden=false;a.play().catch(()=>{});
-      $('recHint').innerHTML=ICO(SVG_PLAY_SM)+(wasAgc?'Bản +AGC':'Bản THÔ')+' — nghe rồi ghi bản kia để so.';}
+      $('recHint').innerHTML=ICO(SVG_PLAY)+(wasAgc?'Bản +AGC':'Bản THÔ')+' — nghe rồi ghi bản kia để so.';}
     else $('recHint').textContent='Không thu được gì (vừa bấm quá nhanh?). Thử lại.';
   });
 }
@@ -1043,9 +1179,8 @@ recReset();
 
 // ── Poll ─────────────────────────────────────────
 async function poll(){
-  try{render(await(await fetch('/api/state')).json());
-    $('st').textContent='online';$('sti').className='status-dot';}
-  catch(e){$('st').textContent='offline';$('sti').className='status-dot off';}
+  try{render(await(await fetch('/api/state')).json());}
+  catch(e){$('st').textContent='offline';$('vorb').dataset.state='offline';}
 }
 // ── Setup tab (AI model / server / wake) ─────────────
 const PRESETS={openai:'https://api.openai.com/v1',openrouter:'https://openrouter.ai/api/v1',moonshot:'https://api.moonshot.ai/v1',gemini:'',omniroute:'',custom:''};
@@ -1081,7 +1216,9 @@ async function connectServer(){$('srvStat').textContent='Connecting…';
   try{const j=await(await fetch('/api/setup/server?ota='+encodeURIComponent($('ota').value.trim()),{method:'POST'})).json();
     $('srvStat').textContent=j.ok?('● '+j.ws_url+(j.src==='derived'?' (derived)':'')):('✗ '+j.error);}
   catch(e){$('srvStat').textContent='✗ '+e;}}
-function setWake(e){$('weAlexa').classList.toggle('on',e==='alexa');$('weNabu').classList.toggle('on',e==='nabu');$('weMaiOi').classList.toggle('on',e==='mai_oi');
+const WAKE_SEG_ID={alexa:'weAlexa',nabu:'weNabu',mai_oi:'weMaiOi'};
+const WAKE_SEG_IDS=Object.values(WAKE_SEG_ID);
+function setWake(e){activateSeg(WAKE_SEG_IDS,WAKE_SEG_ID[e]);
   wakeUI(e);
   fetch('/api/setup/wake?engine='+e,{method:'POST'});}
 // Show only the sensitivity control that applies to the selected engine (Alexa uses wake_sensitivity;
@@ -1138,7 +1275,12 @@ async function saveHa(){const lines=haLines();
   $('haStat').textContent='Đã lưu '+lines.split('\n').filter(Boolean).length+' thiết bị.';renderHaSaved(lines);}
 function renderHaSaved(devs){const lines=(devs||'').split('\n').filter(Boolean);
   $('haSaved').innerHTML=lines.map((l,i)=>`<div class="row" style="margin:5px 0;gap:6px"><input class="codein" value="${l.replace(/"/g,'&quot;')}" onchange="editHaLine(${i},this.value)"><button class="tbtn" onclick="removeHaLine(${i})" aria-label="Xoá thiết bị"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>`).join('')||'<div class="hint">(chưa lưu thiết bị nào)</div>';
-  $('haSaved').dataset.lines=JSON.stringify(lines);}
+  $('haSaved').dataset.lines=JSON.stringify(lines);
+  // Count lives in the collapsed summary, so the list can stay folded without hiding the fact that
+  // there is (or isn't) anything saved. Auto-open only when it's empty -- an empty block that only
+  // says "(chưa lưu thiết bị nào)" is not worth a tap, a populated one is.
+  $('haSavedCount').textContent=lines.length;
+  if(!lines.length)$('haSavedBox').open=true;}
 function _haLines(){return JSON.parse($('haSaved').dataset.lines||'[]');}
 async function _saveHaLines(lines){await fetch(`/api/set?key=ha_devices&value=${encodeURIComponent(lines.join('\n'))}`,{method:'POST'});renderHaSaved(lines.join('\n'));}
 function editHaLine(i,v){const l=_haLines();l[i]=v.trim();_saveHaLines(l);}
@@ -1331,6 +1473,10 @@ async function mediaPollTick(){
   try{renderNowPlaying(await(await fetch('/api/media/state')).json());}catch(e){}
 }
 restoreMediaSearchState();
+// Paint the empty state up front. Without this the results area stays a blank void until the first
+// /api/media/state tick lands (~1s, longer if the device is busy) -- on the Media tab that reads as
+// a broken page rather than "nothing here yet".
+if(!mediaResultsCache.length)renderMediaResults();
 // Reopen whichever tab was last used -- reloading the panel (which the browser does aggressively
 // after a UI change) shouldn't dump you back on Settings every time.
 (function restoreTab(){
