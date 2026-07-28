@@ -16,24 +16,40 @@ Chạy chính trên **PHICOMM R1** (Android 5.1.1 / API 22) thay firmware gốc.
 - `applicationId = info.dourok.voicebot.dev` (suffix `.dev` → cài **song song** app gốc aiboxplus, không đụng package `info.dourok.voicebot`).
 - Toolchain: **JDK 17** (`/opt/homebrew/opt/openjdk@17`), compileSdk 35, minSdk 22, NDK (Snowboy + Opus native).
 
-## Build + Install (đã verify 2026-07-02)
+## Build + Install (đã verify release end-to-end 2026-07-28)
 ```bash
 # BUILD
 cd /Users/lucnguyen/Documents/git/xiaozhi-android
 export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
-./gradlew :app:assembleDebug          # -> app/build/outputs/apk/debug/app-debug.apk (~25 MB)
+./gradlew :app:assembleRelease        # -> app/build/outputs/apk/release/app-release.apk (~15 MB)  <-- BẢN ĐỂ CHẠY
+./gradlew :app:assembleDebug          # -> app/build/outputs/apk/debug/app-debug.apk   (~25 MB)
 
 # INSTALL lên R1 (10.25.113.209) — KHÔNG có adb USB, dùng adb TCP 5555
 ADB=~/Library/Android/sdk/platform-tools/adb
 $ADB connect 10.25.113.209:5555
-# ⚠️ 'adb install' streamed HAY RỚT qua wifi 2.4GHz -> "waiting for device" loop vô tận.
-# Cách BỀN: push rồi pm install QUA SHELL 8080 (độc lập kết nối adb):
-$ADB -s 10.25.113.209:5555 push app/build/outputs/apk/debug/app-debug.apk /data/local/tmp/rc.apk   # ~60s
-# rồi qua shell 8080 (xem "R1 shell" bên dưới): pm install -r /data/local/tmp/rc.apk   (~30-90s -> "Success")
-# pm install -r KILL process app -> ControlServer :8088 tắt tới khi app relaunch (watchdog cứu, hoặc am start).
-# xong: rm -f /data/local/tmp/rc.apk
+$ADB -s 10.25.113.209:5555 push app/build/outputs/apk/release/app-release.apk /data/local/tmp/rc.apk   # 15MB ~36s
+# rồi pm install QUA SHELL 8080 (xem "R1 shell"):  pm install -r /data/local/tmp/rc.apk   -> "Success" (~30-90s)
+# xong: rm -f /data/local/tmp/rc.apk  VÀ  rm -f /sdcard/control.html  (nếu không panel vẫn hiện UI cũ)
 ```
+- **Release là bản để chạy trên máy**, không phải debug: R8 minify + xoá sạch `android.util.Log`
+  (`-assumenosideeffects`), 15 MB thay vì 25 MB. Logging nằm trên hot path (audio từng frame, điểm wake).
+  - Release **ký bằng debug key** (cố ý, xem `app/build.gradle.kts`) → `pm install -r` đè thẳng lên bản
+    đang cài, **KHÔNG cần uninstall, KHÔNG mất settings**. Đã verify: 43 thiết bị HA + ota_url còn nguyên.
+  - Drawer Nhật ký vẫn chạy trong release vì `AppLog` cố tình KHÔNG đi qua `android.util.Log`.
+  - Sửa native/JNI mà thêm class → nhớ thêm keep rule vào `proguard-rules.pro` (Snowboy/Opus/microWakeWord
+    đã có; R8 đổi tên class là JNI bind hụt, chỉ lộ ra lúc chạy chứ build vẫn xanh).
+- ⚠️ **CẢ HAI đường adb đều hay rớt qua wifi 2.4GHz**: `adb install` (stream) treo ở "waiting for device";
+  `adb shell pm install` chết giữa chừng với `error: closed`. `adb push` thì ổn. → push bằng adb, **cài
+  bằng shell 8080** (độc lập kết nối adb).
+- ⚠️ Shell 8080 chạy uid=**system**, không đọc được `/data/local/tmp` (SELinux): `ls`/`rm` trên
+  `/data/local/tmp/rc.apk` trả `Permission denied`. **Nhưng `pm install -r` từ đúng đường dẫn đó vẫn chạy**
+  (pm là service đặc quyền, tự đọc file). Đừng thấy `ls` fail mà tưởng phải đổi chỗ đặt APK. Muốn xoá APK
+  tạm thì dùng `adb shell rm`, không phải shell 8080.
+- `pm install -r` KILL process app → ControlServer :8088 tắt tới khi app relaunch (watchdog kéo dậy ~4s;
+  đo thực tế panel trả 200 ngay lần curl đầu sau khi cài).
 - Verify cài xong: `dumpsys package info.dourok.voicebot.dev | grep lastUpdateTime`.
+- Verify panel đúng bản: `curl -s http://10.25.113.209:8088/ | md5` so với
+  `unzip -p app-release.apk assets/control.html | md5` và file trong repo — 3 cái phải bằng nhau.
 - INSTALL_FAILED_UPDATE_INCOMPATIBLE (đổi debug keystore) → `pm uninstall info.dourok.voicebot.dev` trước (mất SharedPreferences = mọi setting panel về default).
 
 ## Kiến trúc (clean architecture)
@@ -116,7 +132,9 @@ nhận frames `{"data":...}`. Độc lập app (sống cả khi app crash). **Re
 Watchdog `com.user.robot-r1watchdog` tự `am force-stop; am start` khi app chết (~4s), mode `selfbuilt`.
 
 ## Gotchas
-- Sửa code Kotlin → **phải build+cài lại**. Sửa chỉ `control.html` → có thể đẩy thẳng `/sdcard/control.html` (khỏi build) nhưng nhớ dọn sau.
+- Sửa code Kotlin → **phải build+cài lại** (release, xem trên). Sửa chỉ `control.html` → đẩy thẳng
+  `/sdcard/control.html` để lặp nhanh khỏi build — nhưng **chép ngược về `app/src/main/assets/` rồi
+  `rm /sdcard/control.html`** trước khi build, không thì bản trên máy và bản trong repo lệch nhau âm thầm.
 - `mic_source` / sample rate / `wake_engine` đổi cần **Restart app** (AudioRecord + detector mở 1 lần lúc start).
 - Đo layout panel mà không có thiết bị: Chrome headless **bỏ qua `--window-size`** (kẹt ở viewport 500px).
   Muốn ép đúng khổ thì nhúng trang vào `<iframe width=390>` trong 1 file harness rồi
