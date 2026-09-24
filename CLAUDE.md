@@ -132,6 +132,16 @@ nhận frames `{"data":...}`. Độc lập app (sống cả khi app crash). **Re
 Watchdog `com.user.robot-r1watchdog` tự `am force-stop; am start` khi app chết (~4s), mode `selfbuilt`.
 
 ## Gotchas
+- **Máy kẹt "Đang trả lời" (panel) = `voice_awake && voice_state==SPEAKING` không bao giờ reset.**
+  Đã trị 2026-09-24, xem `domain/voice/SessionEnd.kt`. Ba điều cần nhớ khi đụng lại vùng này:
+  - Socket chết **chỉ lộ ra khi GHI**. Websocket của OkHttp bỏ qua `readTimeout` (SO_TIMEOUT=0), và
+    lúc SPEAKING thì app không stream mic → không ghi gì → không phát hiện gì. `pingInterval(20s)`
+    là cái ghi hộ; bỏ nó đi là bug quay lại. Server pong ~9ms, đã đo.
+  - `onFailure` **phải** emit `AudioState.CLOSED` như `onClosed`. Trên wifi nhà, EPIPE mới là cách
+    phiên chết phổ biến; chỉ emit `networkErrorFlow` là `MediaSessionState` không ai dọn.
+  - `MediaSessionState` là state do **server đẩy**, sống dai hơn phiên. Đừng đọc "đang paused" thành
+    "frame này là pause flush" — phải kèm mốc thời gian (`msSincePause`), không thì một bài nhạc
+    pause hôm qua nuốt luôn `tts stop` của câu tạm biệt hôm nay.
 - Sửa code Kotlin → **phải build+cài lại** (release, xem trên). Sửa chỉ `control.html` → đẩy thẳng
   `/sdcard/control.html` để lặp nhanh khỏi build — nhưng **chép ngược về `app/src/main/assets/` rồi
   `rm /sdcard/control.html`** trước khi build, không thì bản trên máy và bản trong repo lệch nhau âm thầm.
