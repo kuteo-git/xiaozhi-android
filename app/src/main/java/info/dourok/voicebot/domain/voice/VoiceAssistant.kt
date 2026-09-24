@@ -87,6 +87,12 @@ class VoiceAssistant @Inject constructor(
     // multi-segment answer) so a single reply can never trip it.
     @Volatile private var autoTurns = 0
     private val MAX_AUTO_TURNS = 8
+
+    // Set while we are deliberately tearing a live channel down in order to build a new one
+    // (onTextCommand's retry). Our own close produces a CLOSED event from the OLD socket, which
+    // would otherwise reach the collector below and end the session we are in the middle of
+    // re-establishing -- chime and all.
+    @Volatile private var reconnecting = false
     private fun chimeGuard(durationMs: Long, marginMs: Long = WAKE_CHIME_MARGIN_MS) {
         val now = System.currentTimeMillis()
         val until = now + durationMs + marginMs
@@ -139,7 +145,19 @@ class VoiceAssistant @Inject constructor(
             // snapshot on the control panel (a song stuck "playing" with silence). Clear it.
             launch {
                 protocol.audioChannelStateFlow.collect {
-                    if (it == AudioState.CLOSED) MediaSessionState.clear()
+                    // The authoritative "the session is over" signal. It used to clear only the
+                    // media snapshot, which left the voice state to be reset by the audio loop's
+                    // per-frame `!isAudioChannelOpened()` check -- and that check can never fire
+                    // while SPEAKING, because a dead socket is only discovered by writing to it and
+                    // SPEAKING is precisely the state that streams nothing. So a goodbye left the
+                    // runtime in SPEAKING for hours. Reset from the event instead.
+                    if (it == AudioState.CLOSED && !reconnecting &&
+                        !protocol.isAudioChannelOpened() &&
+                        SessionEnd.closedChannelEndsSession(isAwake)
+                    ) {
+                        Log.i(TAG, "channel CLOSED event -> ending session")
+                        backToWake()
+                    }
                 }
             }
             launch { state.collect { refreshLed() } }   // LED bám theo trạng thái
@@ -173,12 +191,23 @@ class VoiceAssistant @Inject constructor(
         if (!protocol.sendTextQuery(text)) {
             Log.w(TAG, "sendTextQuery dropped (stale channel) -> reconnect + retry once")
             AppLog.w("Kênh đã chết, nối lại rồi gửi lại lệnh")
-            protocol.closeAudioChannel()
-            if (protocol.openAudioChannel()) {
+            reconnecting = true
+            val reopened = try {
+                protocol.closeAudioChannel()
+                protocol.openAudioChannel()
+            } finally {
+                reconnecting = false
+            }
+            if (reopened) {
                 if (!protocol.sendTextQuery(text)) Log.e(TAG, "sendTextQuery failed after reconnect")
             } else {
                 Log.e(TAG, "reconnect failed, query lost: $text")
                 AppLog.e("Nối lại thất bại, mất lệnh: \"$text\"")
+                // Nothing is coming. Leaving isAwake set here is what parks the panel on
+                // "Đang trả lời" with no reply on its way, so end the session instead of
+                // falling through to SPEAKING.
+                backToWake()
+                return
             }
         }
         state.value = VoiceState.SPEAKING
@@ -257,13 +286,23 @@ class VoiceAssistant @Inject constructor(
         AppLog.i("Người dùng ngắt lời robot")
     }
 
+    /**
+     * The one "this session is over" routine. Reached from three places now -- a mic frame that
+     * finds the socket dead, the channel-closed event itself, and the auto-turn cap -- so it
+     * refuses to run twice: two callers would otherwise sound the end-of-session chime twice.
+     */
     private fun backToWake() {
+        if (!isAwake) return
         Log.i(TAG, "channel closed -> waiting for wake")
         AppLog.i("Kết thúc phiên, về chờ từ khóa")
         isAwake = false
         isMusic = false
         chimeGuard(sounds.playStop(), STOP_CHIME_MARGIN_MS)   // chuông kết thúc phiên (timeout / tạm biệt) — server không gọi AI chào nữa
         state.value = VoiceState.IDLE
+        // The media snapshot is pushed BY the server and only ever cleared here or on the closed
+        // event. Leaving it behind is what let a song paused the day before swallow the `tts stop`
+        // that ends a goodbye (see SessionEnd), so the session's end drops it with everything else.
+        MediaSessionState.clear()
         wakeWord.reset()
     }
 
@@ -283,10 +322,12 @@ class VoiceAssistant @Inject constructor(
                     // Pausing from the control panel flushes the device's audio with a tts-stop,
                     // which is NOT the end of a spoken reply: re-opening the mic there would leave
                     // the robot listening (and liable to false-wake, or to time the session out)
-                    // for as long as the music stays paused.
-                    if (MediaSessionState.nowPlaying.value.state == MediaPlaybackState.PAUSED) {
-                        Log.i(TAG, "tts stop ignored: media paused, not the end of a reply")
-                    } else if (state.value == VoiceState.SPEAKING) {
+                    // for as long as the music stays paused. That is only true of a pause that has
+                    // JUST happened, which is what the window in SessionEnd measures.
+                    val paused = MediaSessionState.nowPlaying.value.state == MediaPlaybackState.PAUSED
+                    if (!SessionEnd.ttsStopEndsReply(state.value, paused, MediaSessionState.msSincePause())) {
+                        Log.i(TAG, "tts stop ignored: state=${state.value} paused=$paused")
+                    } else {
                         playback.awaitCompletion()
                         if (++autoTurns > MAX_AUTO_TURNS) {
                             // Many replies with no real user speech in between (STT resets this) ->

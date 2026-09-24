@@ -32,6 +32,17 @@ class WebsocketProtocol(private val deviceInfo: DeviceInfo,
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(10, TimeUnit.SECONDS)
+        // The readTimeout above does NOT apply once the socket has been upgraded: OkHttp sets the
+        // web socket's SO_TIMEOUT to 0 and waits forever. So without a ping, a connection whose
+        // FIN never arrived (routine on this wifi) is only ever discovered by WRITING to it --
+        // measured 2026-09-24, the client sat "open" on a connection the server had released
+        // hours earlier, and the only two times it ever noticed were EPIPE on a send.
+        //
+        // That is a deadlock for the state this bug lives in: SPEAKING streams no mic, so nothing
+        // writes, so nothing is discovered, so the session never ends. A ping is a write the
+        // runtime does not have to remember to make; no pong inside the interval fails the socket
+        // and reaches onFailure -> AudioState.CLOSED -> the session is torn down.
+        .pingInterval(20, TimeUnit.SECONDS)
         .build()
 
     // MUST be reset on every openAudioChannel (reconnect); otherwise a reconnect's await returns
@@ -189,6 +200,13 @@ class WebsocketProtocol(private val deviceInfo: DeviceInfo,
                 AppLog.e("Lỗi kết nối server: ${t.message}")
                 scope.launch {
                     networkErrorFlow.emit("Server not found")
+                    // A channel that died by error is every bit as closed as one closed politely,
+                    // and on this LAN it is the COMMON way a session ends (EPIPE on the first write
+                    // after the server went away). Emitting only networkErrorFlow here meant nobody
+                    // downstream was told the session was over: the server-pushed media snapshot
+                    // was never cleared and survived into later sessions, where a stale "paused"
+                    // then swallowed the `tts stop` that ends a reply. Same event, same listeners.
+                    audioChannelStateFlow.emit(AudioState.CLOSED)
                 }
                 websocket = null
             }
