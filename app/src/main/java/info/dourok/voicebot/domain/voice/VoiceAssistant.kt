@@ -93,6 +93,10 @@ class VoiceAssistant @Inject constructor(
     // would otherwise reach the collector below and end the session we are in the middle of
     // re-establishing -- chime and all.
     @Volatile private var reconnecting = false
+
+    // When the server was last heard from, on ANY frame (JSON or audio). This is what tells a
+    // delivered command from one written into a socket nobody is reading -- see deliverTextQuery.
+    @Volatile private var lastServerFrameAt = 0L
     private fun chimeGuard(durationMs: Long, marginMs: Long = WAKE_CHIME_MARGIN_MS) {
         val now = System.currentTimeMillis()
         val until = now + durationMs + marginMs
@@ -119,6 +123,7 @@ class VoiceAssistant @Inject constructor(
             // Playback is wired once; incomingAudioFlow is a shared flow that survives reconnects.
             playback.start(protocol.incomingAudioFlow) {
                 val now = System.currentTimeMillis()
+                lastServerFrameAt = now
                 if (state.value != VoiceState.SPEAKING) {
                     Log.i(TAG, "playback audio chunk (not SPEAKING yet): now=$now suppressSpeakingUntil=$suppressSpeakingUntil willSetSpeaking=${now > suppressSpeakingUntil}")
                 }
@@ -185,32 +190,63 @@ class VoiceAssistant @Inject constructor(
         if (!protocol.isAudioChannelOpened()) protocol.openAudioChannel()
         isAwake = true
         autoTurns = 0
-        // isAudioChannelOpened() can lag reality: after the server closes an idle session the
-        // client may keep believing the socket is open for minutes, and a query written into it is
-        // dropped with no error at all. Trust the send result instead -- reconnect and retry once.
-        if (!protocol.sendTextQuery(text)) {
-            Log.w(TAG, "sendTextQuery dropped (stale channel) -> reconnect + retry once")
-            AppLog.w("Kênh đã chết, nối lại rồi gửi lại lệnh")
-            reconnecting = true
-            val reopened = try {
-                protocol.closeAudioChannel()
-                protocol.openAudioChannel()
-            } finally {
-                reconnecting = false
-            }
-            if (reopened) {
-                if (!protocol.sendTextQuery(text)) Log.e(TAG, "sendTextQuery failed after reconnect")
-            } else {
-                Log.e(TAG, "reconnect failed, query lost: $text")
-                AppLog.e("Nối lại thất bại, mất lệnh: \"$text\"")
-                // Nothing is coming. Leaving isAwake set here is what parks the panel on
-                // "Đang trả lời" with no reply on its way, so end the session instead of
-                // falling through to SPEAKING.
-                backToWake()
-                return
-            }
+        if (!deliverTextQuery(text)) {
+            // Nothing is coming. Leaving isAwake set here is what parks the panel on
+            // "Đang trả lời" with no reply on its way, so end the session instead of
+            // falling through to SPEAKING.
+            backToWake()
+            return
         }
         state.value = VoiceState.SPEAKING
+    }
+
+    /**
+     * Send a typed query and make sure the server actually received it.
+     *
+     * `WebSocket.send()` returning true means the frame was QUEUED, not delivered. A command
+     * written into a socket the server has already dropped therefore disappears with no error at
+     * all, and the old retry -- which triggered on that return value -- never ran. Measured on the
+     * R1, 2026-09-24 09:15:00: the daily bulletin was requested, EPIPE surfaced in the same second,
+     * the session ended, and the bulletin was never read. Nothing anywhere said so.
+     *
+     * So delivery is judged by the server ANSWERING, not by the send returning. Any frame counts,
+     * JSON or audio; the server starts its thinking loop within about a second, so the deadline is
+     * an order of magnitude more than a healthy reply needs.
+     */
+    private suspend fun deliverTextQuery(text: String): Boolean {
+        val firstSent = protocol.sendTextQuery(text)
+        if (firstSent && awaitServerFrame()) return true
+        Log.w(TAG, "query not acknowledged (sent=$firstSent) -> reconnect + resend once")
+        AppLog.w("Server không phản hồi lệnh, nối lại rồi gửi lại")
+
+        reconnecting = true
+        val reopened = try {
+            protocol.closeAudioChannel()
+            protocol.openAudioChannel()
+        } finally {
+            reconnecting = false
+        }
+        if (!reopened) {
+            Log.e(TAG, "reconnect failed, query lost: $text")
+            AppLog.e("Nối lại thất bại, mất lệnh: \"$text\"")
+            return false
+        }
+        if (protocol.sendTextQuery(text) && awaitServerFrame()) return true
+        Log.e(TAG, "query lost after reconnect: $text")
+        AppLog.e("Gửi lại vẫn không được, mất lệnh: \"$text\"")
+        return false
+    }
+
+    /** Wait for any frame from the server, polled rather than collected so it cannot race the
+     *  subscription of a zero-replay SharedFlow that [handleServerMessage] is already draining. */
+    private suspend fun awaitServerFrame(): Boolean {
+        val sentAt = System.currentTimeMillis()
+        val deadline = sentAt + REPLY_DEADLINE_MS
+        while (System.currentTimeMillis() < deadline) {
+            if (lastServerFrameAt >= sentAt) return true
+            kotlinx.coroutines.delay(REPLY_POLL_MS)
+        }
+        return false
     }
 
 
@@ -307,6 +343,7 @@ class VoiceAssistant @Inject constructor(
     }
 
     private fun handleServerMessage(json: JSONObject) {
+        lastServerFrameAt = System.currentTimeMillis()
         when (json.optString("type")) {
             "tts" -> when (json.optString("state")) {
                 "start" -> {
@@ -478,5 +515,11 @@ class VoiceAssistant @Inject constructor(
 
     companion object {
         private const val TAG = "VoiceAssistant"
+
+        /** How long a typed query may go unanswered before we treat it as never delivered. The
+         *  server answers a real one in about a second; this is deliberately far above that, so a
+         *  slow reply is never mistaken for a lost one and read out twice. */
+        private const val REPLY_DEADLINE_MS = 10_000L
+        private const val REPLY_POLL_MS = 200L
     }
 }

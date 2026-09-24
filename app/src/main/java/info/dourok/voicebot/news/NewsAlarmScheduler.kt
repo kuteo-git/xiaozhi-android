@@ -39,6 +39,15 @@ object NewsAlarmScheduler {
             Log.w(TAG, "Bad news_time '${Settings.newsTime}' -> no alarm scheduled")
             return
         }
+        // An AlarmManager alarm is an absolute instant. Deriving one from the ROM's pre-NTP clock
+        // puts it years in the past the moment the clock is corrected, and a past RTC alarm is
+        // delivered immediately -- the speaker reading the news the instant it finishes booting.
+        // Wait for ACTION_TIME_CHANGED instead; BootReceiver re-derives the alarm from there.
+        if (!NewsSchedule.clockIsTrustworthy(System.currentTimeMillis())) {
+            Log.w(TAG, "clock not set yet -> deferring the alarm until ACTION_TIME_CHANGED")
+            AppLog.i("Đồng hồ máy chưa đúng -> hoãn hẹn giờ bản tin tới khi chỉnh xong")
+            return
+        }
         val triggerAt = nextOccurrence(hour, minute)
         scheduleAt(context, REQ_TRIGGER, "trigger", triggerAt)
         Log.i(TAG, "News alarm scheduled: trigger=$triggerAt")

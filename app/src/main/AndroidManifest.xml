@@ -42,6 +42,9 @@
             <intent-filter android:priority="1000">
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <!-- The R1 boots on the ROM's 2018 clock; this is the only signal that it became
+                     real, and the News alarm can only be derived once it has. -->
+                <action android:name="android.intent.action.TIME_SET" />
             </intent-filter>
         </receiver>
 
