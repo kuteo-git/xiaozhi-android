@@ -77,6 +77,37 @@ object AppConfig {
     const val LED_SPEAKING = "204"
     const val LED_MUSIC = "309"
 
+    // ── Playback tuning (AudioDsp + LoudnessEnhancer) ───────────────────────
+    // Two curves rather than one, because this box plays a spoken reply and a song down the SAME
+    // pipeline and they want opposite things: the voice wants presence and no low end at all, a song
+    // wants what little bottom the driver has. One curve for both is what made every setting a
+    // compromise nobody liked.
+    //
+    // Both are starting points measured against this speaker on 2026-09-25, not tuned by ear yet:
+    // the TTS voice peaks at 230 Hz and is already -31 dB by 3.6 kHz, so consonants are what a
+    // spoken reply is short of; and the driver is at the mic's noise floor below 100 Hz, so 80 Hz
+    // stays at zero in both. Bands are AudioDsp.BAND_FREQS_HZ, values in millibels.
+
+    /** Voice: nothing under 160, a little body, and the presence a spoken reply is missing. */
+    const val EQ_BANDS_SPEECH = "0,100,0,0,200,300,200,0"
+
+    /** Music: the lowest octave the driver actually plays, and a gentle top. */
+    const val EQ_BANDS_MUSIC = "0,300,100,0,0,100,200,100"
+
+    /**
+     * Target gain for the platform's LoudnessEnhancer, in millibels. It is the one effect on this
+     * device that raises loudness with a limiter under it, so it -- not the equalizer -- is what
+     * answers "quá nhỏ". 500 is mild and audible; 0 turns it off.
+     */
+    const val LOUDNESS_MB = 500
+
+    /**
+     * Corner of the protective high-pass, in Hz. 0 turns it off. See AudioDsp for why it exists:
+     * below this the driver was measured making no sound, so what goes in comes out as excursion
+     * that modulates the band the voice lives in.
+     */
+    const val DSP_HIGH_PASS_HZ = 60
+
     /**
      * Sensitivity used while the assistant is speaking / playing music. Kept LOW so the assistant's
      * own TTS voice / music doesn't echo back into the mic and false-trigger a wake — that would

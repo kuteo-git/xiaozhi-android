@@ -62,7 +62,7 @@ $ADB -s 10.25.113.209:5555 push app/build/outputs/apk/release/app-release.apk /d
 | Wake | `data/voice/{Snowboy,MicroWakeWord,MaiOi}WakeWordDetector.kt` | **3 engine**, chọn bằng `wake_engine` (cần restart): `alexa` = Snowboy `alexa2.umdl` (+`ai/kitt/snowboy`), `nabu` = microWakeWord "OK Nabu" (ngưỡng compile cứng trong `libmicro_wake_word_jni.so` → KHÔNG chỉnh được), `mai_oi` = "Nabi ơi" (`mai_oi/mai_oi.tflite`, chỉnh bằng `mai_oi_threshold`). Snowboy `setStrict()` khi đang SPEAKING để TTS không tự kích. ⚠️ `wake_sensitivity` (Snowboy, cao = nhạy hơn) NGƯỢC hướng với `mai_oi_threshold` (điểm số, **thấp** = nhạy hơn). |
 | AGC STT | `domain/voice/SttAgc.kt` | AGC phần mềm **CHỈ áp lúc LISTENING, TRƯỚC Opus** (kéo giọng xa lên `target`, trần `maxGain`, sàn `floor`). `gain = target/max(env,floor)`, clamp `[1,maxGain]`. Trần thật = `target/floor` (0.35/0.004 ≈ 87.5x) — maxGain > mức đó vô nghĩa. |
 | Codec | `OpusEncoder/Decoder/StreamPlayer.kt` | Opus 16kHz. |
-| Playback | `data/voice/OpusAudioPlayback.kt` | AudioTrack + Equalizer (`domain/voice/AudioPlayback.kt`). |
+| Playback | `data/voice/OpusAudioPlayback.kt` | AudioTrack + `domain/voice/AudioDsp.kt` (EQ 8 dải **tự làm trên PCM**, KHÔNG dùng `android.media.audiofx.Equalizer` — xem Gotchas) + `LoudnessEnhancer` (độ to). Hai curve: giọng / nhạc, chọn theo `MediaSessionState.isMusicPlaying`. |
 | LED | `data/voice/MsgCenterLedIndicator.kt` | LED ring QUA system service **msgcenter** (`sendMsg(4096,code,0)` reflection) — KHÔNG ghi sysfs. Không bật được cả 2 vòng đèn cùng lúc. |
 | Config | `data/AppConfig.kt` (default) + `data/Settings.kt` (SharedPreferences, runtime) | Settings đổi live qua control panel; một số cần restart app (mic_source, sample rate). |
 | Protocol | `protocol/WebsocketProtocol.kt` | WS tới server `ws://<mac>:8000/xiaozhi/v1/`. Connect-on-wake. |
@@ -132,6 +132,48 @@ nhận frames `{"data":...}`. Độc lập app (sống cả khi app crash). **Re
 Watchdog `com.user.robot-r1watchdog` tự `am force-stop; am start` khi app chết (~4s), mode `selfbuilt`.
 
 ## Gotchas
+- **Âm thanh phát: EQ là của app, không phải của platform.** Đo trên máy 25/09/2026, và đây là lý
+  do `android.media.audiofx.Equalizer` bị bỏ:
+  - `/system/etc/audio_effects.conf` chỉ đăng ký **effect mềm AOSP** — không có vendor conf, HW
+    effect proxy comment hết, `pre_processing` (AEC/NS/AGC) **không nạp** nên
+    `AcousticEchoCanceler.isAvailable()` là false dù `AudioRecorder` vẫn thử bật.
+    Có sẵn mà chưa từng dùng: **`loudness_enhancer`** (`libldnhncr.so`) → giờ đã dùng.
+  - `DynamicsProcessing` (EQ nhiều band + compressor tử tế) cần **API 28**; máy API 22 → loại thẳng.
+  - EQ của AOSP cố định **5 band 60/230/910/3600/14000 Hz** — cách nhau 2 quãng tám nên filter rất
+    rộng và chồng nhau: **xin +4 dB ở 230 Hz nhận +7.3 dB**, vì +10 dB xin ở 60 Hz rò sang. Slider
+    không chỉnh đúng tần số ghi dưới nó, nên không ai chỉnh bằng tai được. Sau khi đổi sang
+    `AudioDsp` (8 band, 1 quãng tám, Q=1.414): xin +10 dB ở 1280 Hz **nhận +9.7 dB**, và 320 Hz
+    cách 2 quãng tám chỉ **+0.3 dB**.
+  - Hai band ngoài cùng của EQ cũ vô nghĩa với giọng: TTS đo được **−45 dB ở 60 Hz** và **−68 dB ở
+    14 kHz** so với đỉnh của chính nó (áp curve cũ lên file TTS chỉ đẩy peak 0.796 → 0.812).
+  - Loa **roll-off dưới ~100 Hz** (60 Hz nằm ở sàn ồn của mic trong khi 120 Hz vống +35 dB) → có
+    high-pass bảo vệ ở `dsp_highpass_hz` (mặc định 60, 0 = tắt).
+  - **Phần cứng thì CÓ cái xịn hơn và Android không với tới**: codec phát là **AK7755** (card2,
+    `/proc/asound/cards`), AKM codec có DSP 32-bit nạp firmware từ
+    `/system/vendor/firmware/ak7755_{pram,cram,ofreg}_data{2,3}.bin` (CRAM = hệ số filter). Driver ở
+    đây **không lộ ALSA control nào** cho nó, `mixer_paths.xml` là bản Rockchip generic, hệ số phải
+    dựng bằng tool của AKM, và ghi vào `/system` trên máy đã mod thì rủi ro mất tiếng hẳn mà không
+    A/B được. Ghi lại là **đã cân nhắc và xếp cuối vì rủi ro**, không phải chưa biết.
+
+### Đo âm thanh phát bằng mic của chính máy — và giới hạn của nó
+`/api/mic/start` + `/api/say` + `/api/mic/rec.wav`, rồi so phổ A/B (EQ off vs on). Mic **không** bị
+AEC cắt (xem trên) nên nghe rõ loa. **Null test (2 lần đều off) ra ±1.0 dB, level +0.1 dB** → lặp lại
+được. Nhưng:
+- **Mic 16 kHz** → Nyquist 8 kHz, band 10 kHz không đo được.
+- **Mic nằm cùng thùng với loa.** S/N theo band, so với lúc im lặng: 60 Hz **+0.7 dB**, 230 Hz +19.2,
+  910 Hz +4.9, 1800 Hz +15.0, 3600 Hz **+1.4 dB**, 6000 Hz +6.4. Nên **chỉ 120–2000 Hz là số thật**;
+  ở 60 Hz và 3600 Hz mic chỉ nghe sàn ồn của chính nó, và mọi số đo ở đó là rác. Vùng presence
+  ~2.5–5 kHz **phải nghe bằng tai** hoặc dùng mic ngoài. Dưới 200 Hz thì rung vỏ lấn (120 Hz vống
+  +35 dB), nên không đo được đáp tuyến bass thật của loa bằng mic nội bộ.
+
+### macOS chặn Local Network → `adb` và `python` không gọi được máy
+Trên máy Mac này `adb connect` và socket của python trả `No route to host` tới 10.25.113.209 ở **mọi**
+cổng, trong khi `curl` và `nc` (binary hệ thống trong `/usr/bin`) thì vào bình thường — python vẫn ra
+được Internet và localhost, nên **không phải mạng, là quyền Local Network theo từng binary**.
+- Shell 8080: dùng `tools/r1sh.sh` (WebSocket handshake + frame tự dựng, `nc` tải socket).
+- `adb`: relay qua localhost — `mkfifo f; nc -l 127.0.0.1 15555 < f | nc 10.25.113.209 5555 > f`
+  rồi `adb connect 127.0.0.1:15555`. Verify rồi: push 15 MB mất ~91s.
+
 - **Máy kẹt "Đang trả lời" (panel) = `voice_awake && voice_state==SPEAKING` không bao giờ reset.**
   Đã trị 2026-09-24, xem `domain/voice/SessionEnd.kt`. Ba điều cần nhớ khi đụng lại vùng này:
   - Socket chết **chỉ lộ ra khi GHI**. Websocket của OkHttp bỏ qua `readTimeout` (SO_TIMEOUT=0), và

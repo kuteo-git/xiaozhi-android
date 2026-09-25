@@ -65,6 +65,19 @@ object MediaSessionState {
         _nowPlaying.value = np
     }
 
+    /**
+     * True while a song is what is coming out of the speaker.
+     *
+     * Exists because a spoken reply and a song share one playback pipeline, and [AudioDsp] needs
+     * opposite curves for them -- a voice wants presence and nothing under 160 Hz, a song wants the
+     * little bottom this driver has. Read per Opus frame, so it is a volatile read and no more:
+     * DOWNLOADING counts as well, because the frames of a song that is starting are already a song.
+     */
+    val isMusicPlaying: Boolean
+        get() = _nowPlaying.value.state.let {
+            it == MediaPlaybackState.PLAYING || it == MediaPlaybackState.DOWNLOADING
+        }
+
     /** How long the session has been paused, or [Long.MAX_VALUE] when it is not paused at all. */
     fun msSincePause(nowMs: Long = System.nanoTime() / 1_000_000): Long =
         if (pausedAtMs == 0L) Long.MAX_VALUE else nowMs - pausedAtMs

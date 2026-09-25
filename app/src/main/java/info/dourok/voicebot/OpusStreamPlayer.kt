@@ -3,10 +3,12 @@ package info.dourok.voicebot
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
-import android.media.audiofx.Equalizer
+import android.media.audiofx.LoudnessEnhancer
 import android.util.Log
 import info.dourok.voicebot.data.Settings
+import info.dourok.voicebot.domain.voice.AudioDsp
 import info.dourok.voicebot.domain.voice.EqInfo
+import info.dourok.voicebot.domain.voice.MediaSessionState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -15,6 +17,17 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 
+/**
+ * Plays decoded Opus PCM, tuned on the way out.
+ *
+ * The tone control is [AudioDsp] on the PCM rather than the platform `Equalizer` on the session --
+ * that effect's five bands sit two octaves apart and reach each other, so its sliders did not mean
+ * the frequencies they were labelled with. [AudioDsp]'s own note carries the measurements.
+ *
+ * What the platform still owns is **loudness**: `LoudnessEnhancer` is the one effect registered on
+ * this box that raises level with a limiter under it (`/system/etc/audio_effects.conf` ->
+ * `libldnhncr.so`), and it had never been used. Frequency here, level there, one owner each.
+ */
 class OpusStreamPlayer(
     private val sampleRate: Int,
     private val channels: Int,
@@ -27,7 +40,14 @@ class OpusStreamPlayer(
     private var audioTrack: AudioTrack
     private val playerScope = CoroutineScope(Dispatchers.IO + Job())
     private var isPlaying = false
-    private var equalizer: Equalizer? = null
+    private var loudness: LoudnessEnhancer? = null
+
+    // Two chains rather than one reconfigured on the fly: each keeps its own filter history, so a
+    // song starting mid-session does not make the voice's filters restart from a stale state, and
+    // there is no coefficient swap inside a frame to click.
+    private val speechChain = AudioDsp.Chain(sampleRate)
+    private val musicChain = AudioDsp.Chain(sampleRate)
+    @Volatile private var tuningOn = false
 
     init {
         val channelConfig = if (channels == 1) AudioFormat.CHANNEL_OUT_MONO else AudioFormat.CHANNEL_OUT_STEREO
@@ -49,45 +69,42 @@ class OpusStreamPlayer(
             AudioTrack.MODE_STREAM
         )
         try {
-            equalizer = Equalizer(0, audioTrack.audioSessionId)
-            applyEq()
+            loudness = LoudnessEnhancer(audioTrack.audioSessionId)
         } catch (e: Exception) {
-            Log.e(TAG, "EQ init failed: ${e.message}")
+            // Registered in audio_effects.conf on this device, but a box without libldnhncr.so is a
+            // box that still has to play -- so this is a missing improvement, not a failure to start.
+            Log.e(TAG, "LoudnessEnhancer unavailable: ${e.message}")
         }
+        applyAudioSettings()
     }
 
-    /** Re-read Settings.eqEnabled / eqBands and apply to the equalizer (live). */
-    fun applyEq() {
-        val eq = equalizer ?: return
+    /** Re-read the playback tuning from [Settings] and apply it live. */
+    fun applyAudioSettings() {
+        tuningOn = Settings.eqEnabled
         try {
-            eq.enabled = Settings.eqEnabled
-            if (Settings.eqEnabled) {
-                val bands = Settings.eqBands
-                val lo = eq.bandLevelRange[0].toInt()
-                val hi = eq.bandLevelRange[1].toInt()
-                for (b in 0 until eq.numberOfBands.toInt()) {
-                    val mb = (bands.getOrNull(b) ?: 0).coerceIn(lo, hi)
-                    eq.setBandLevel(b.toShort(), mb.toShort())
-                }
+            val hp = if (tuningOn) Settings.dspHighPassHz else 0
+            speechChain.configure(if (tuningOn) Settings.eqBandsSpeech else IntArray(0), hp)
+            musicChain.configure(if (tuningOn) Settings.eqBandsMusic else IntArray(0), hp)
+        } catch (e: Exception) {
+            Log.e(TAG, "dsp configure failed: ${e.message}")
+        }
+        try {
+            loudness?.let {
+                val mb = if (tuningOn) Settings.loudnessMb else 0
+                it.setTargetGain(mb)
+                it.enabled = mb > 0
             }
         } catch (e: Exception) {
-            Log.e(TAG, "applyEq failed: ${e.message}")
+            Log.e(TAG, "loudness failed: ${e.message}")
         }
     }
 
-    fun eqInfo(): EqInfo? {
-        val eq = equalizer ?: return null
-        return try {
-            val n = eq.numberOfBands.toInt()
-            EqInfo(
-                freqsHz = IntArray(n) { eq.getCenterFreq(it.toShort()) / 1000 }, // mHz -> Hz
-                minMb = eq.bandLevelRange[0].toInt(),
-                maxMb = eq.bandLevelRange[1].toInt(),
-            )
-        } catch (e: Exception) {
-            null
-        }
-    }
+    /** Band layout for the control panel, which builds its sliders from whatever this reports. */
+    fun eqInfo() = EqInfo(
+        freqsHz = AudioDsp.BAND_FREQS_HZ.copyOf(),
+        minMb = AudioDsp.MIN_MB,
+        maxMb = AudioDsp.MAX_MB,
+    )
 
     fun start(pcmFlow: Flow<ByteArray?>) {
         if (!isPlaying) {
@@ -100,6 +117,13 @@ class OpusStreamPlayer(
                 pcmFlow.collect { pcmData ->
                     pcmData?.let {
                         try {
+                            // Per frame, because one pipeline carries both a spoken reply and a
+                            // song and the two want different curves -- a volatile read, no more.
+                            if (tuningOn) {
+                                val chain =
+                                    if (MediaSessionState.isMusicPlaying) musicChain else speechChain
+                                chain.process(it)
+                            }
                             audioTrack.write(it, 0, it.size)
                         } catch (e: Exception) {
                             Log.e(TAG, "Error writing to AudioTrack", e)
@@ -127,6 +151,11 @@ class OpusStreamPlayer(
                 audioTrack.flush()
                 audioTrack.play()
             }
+            // The filters hold a tail of audio that was thrown away. Carrying it into the next
+            // utterance is a fragment of the interrupted one, filtered -- a thump at the start of
+            // the reply that replaced it.
+            speechChain.reset()
+            musicChain.reset()
         } catch (e: Exception) {
             Log.e(TAG, "flush: ${e.message}")
         }
@@ -135,8 +164,8 @@ class OpusStreamPlayer(
     fun release() {
         stop()
         playerScope.cancel()  // stop the incomingAudioFlow collector coroutine (otherwise it leaks)
-        try { equalizer?.release() } catch (_: Exception) {}
-        equalizer = null
+        try { loudness?.release() } catch (_: Exception) {}
+        loudness = null
         try { audioTrack.release() } catch (e: Exception) { Log.e(TAG, "release: ${e.message}") }
     }
 

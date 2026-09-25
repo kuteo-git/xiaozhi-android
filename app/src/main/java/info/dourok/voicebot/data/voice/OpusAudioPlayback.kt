@@ -27,7 +27,7 @@ class OpusAudioPlayback(
 
     override fun flush() = player.flush()
 
-    override fun applyEq() = player.applyEq()
+    override fun applyAudioSettings() = player.applyAudioSettings()
 
     override fun eqInfo() = player.eqInfo()
 

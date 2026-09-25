@@ -589,8 +589,12 @@ select:active,select:focus{box-shadow:0 0 0 4px var(--grad-dim);}
     </div>
     <div class="card">
       <div class="ch"><span class="icon-badge ib-eq"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><line x1="5" y1="2" x2="5" y2="18"/><circle cx="5" cy="7" r="1.8" fill="currentColor" stroke="none"/><line x1="10" y1="2" x2="10" y2="18"/><circle cx="10" cy="13" r="1.8" fill="currentColor" stroke="none"/><line x1="15" y1="2" x2="15" y2="18"/><circle cx="15" cy="9" r="1.8" fill="currentColor" stroke="none"/></svg></span><h2>Equalizer</h2><label class="sw"><input type="checkbox" id="eqon" aria-label="Bật/tắt Equalizer"><span></span></label></div>
+      <div class="row"><label>Chỉnh cho</label>
+        <div class="segsel" style="flex:1"><button id="epV" class="on" onclick="setEqProfile('speech')">Giọng nói</button><button id="epM" onclick="setEqProfile('music')">Nhạc</button></div></div>
       <div class="eqrow" id="eq"></div>
-      <div class="hint">Chỉnh âm sắc 5 dải tần (±15 dB). Mặc định tắt — bật để boost bass hoặc treble theo ý thích. Áp dụng ngay.</div>
+      <div class="row"><label>Độ to (loudness)</label><input type="range" id="lden" min="0" max="2000" step="100"><span class="val" id="ldenv">–</span></div>
+      <div class="row"><label>Cắt trầm dưới</label><input type="range" id="hpf" min="0" max="150" step="10"><span class="val" id="hpfv">–</span></div>
+      <div class="hint">Chỉnh âm sắc 8 dải, mỗi dải một quãng tám (±15 dB) — kéo dải nào là đúng tần số ghi dưới dải đó.<details><summary>Chi tiết</summary><p><b>Hai đường cong riêng.</b> Giọng nói và nhạc đi cùng một đường phát nhưng cần ngược nhau, nên chọn "Chỉnh cho" rồi kéo — máy tự đổi khi bắt đầu phát nhạc.</p><p><b>Độ to</b> dùng LoudnessEnhancer của hệ thống: nó có limiter nên tăng to mà không rè. Đây là chỗ để chữa "nghe quá nhỏ", không phải kéo dải tần lên.</p><p><b>Cắt trầm dưới</b> bỏ phần loa không phát được thành tiếng (đo được: dưới ~100 Hz loa này nằm ở sàn ồn). Để 0 là tắt.</p><p>Đo ngày 25/09/2026: giọng TTS ở 60 Hz thấp hơn đỉnh 45 dB và ở 14 kHz thấp hơn 68 dB — nên hai đầu dải gần như không có gì để kéo.</p></details></div>
     </div>
     <div class="card">
       <div class="ch"><span class="icon-badge ib-mic"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="7.5" y="2" width="5" height="9" rx="2.5" fill="currentColor" stroke="none"/><path d="M4.5 9.5a5.5 5.5 0 0011 0"/><line x1="10" y1="15" x2="10" y2="18"/><line x1="7" y1="18" x2="13" y2="18"/></svg></span><h2>Nguồn mic</h2></div>
@@ -1102,12 +1106,18 @@ function render(s){
   if(document.activeElement!==$('ledI'))$('ledI').value=s.led_idle||'';
   activateSeg(['sr24','sr48'],s.playback_sr==24000?'sr24':'sr48');
   $('eqon').checked=s.eq_enabled;
-  if(s.eq&&!eqInit){eqInit=true;window.bands=s.eq.freqs.map((f,i)=>s.eq_bands[i]||0);
+  // The slider row is built from whatever band layout the DEVICE reports, which is why moving from
+  // the platform equalizer's five fixed bands to the app's eight needed no change here.
+  if(s.eq&&!eqInit){eqInit=true;
+    window.bandsSpeech=s.eq.freqs.map((f,i)=>(s.eq_bands||[])[i]||0);
+    window.bandsMusic=s.eq.freqs.map((f,i)=>(s.eq_bands_music||[])[i]||0);
     $('eq').innerHTML=s.eq.freqs.map((f,i)=>{const hz=f>=1000?(f/1000)+'k':f;
       return `<div class="eqband"><span class="eqg" id="g${i}"></span>
-        <div class="eq-wrap"><input class="vert" type="range" min="${s.eq.min}" max="${s.eq.max}" step="100" value="${bands[i]}" oninput="onEq(${i},this.value)"></div>
+        <div class="eq-wrap"><input class="vert" id="b${i}" type="range" min="${s.eq.min}" max="${s.eq.max}" step="100" oninput="onEq(${i},this.value)"></div>
         <div class="eqf">${hz}</div></div>`;}).join('');
-    s.eq.freqs.forEach((f,i)=>$('g'+i).textContent=(bands[i]/100).toFixed(0));}
+    drawEqCurve();}
+  if(document.activeElement!==$('lden')){$('lden').value=s.loudness_mb;$('ldenv').textContent=(s.loudness_mb/100).toFixed(1)+' dB';}
+  if(document.activeElement!==$('hpf')){$('hpf').value=s.dsp_highpass_hz;$('hpfv').textContent=s.dsp_highpass_hz>0?s.dsp_highpass_hz+' Hz':'tắt';}
   if(s.tts_host&&s.tts_host!==TTS_HOST){TTS_HOST=s.tts_host;loadVoices();}
   // Populate the Setup inputs ONCE (from saved state); never on later polls, so unsaved edits
   // (text fields, provider combobox, model) are not clobbered every 1.5s.
@@ -1143,7 +1153,15 @@ function render(s){
   const sig=JSON.stringify(s.chat);
   if(sig!==lastSig){lastSig=sig;renderChat(s.chat);}
 }
-function onEq(i,v){bands[i]=parseInt(v);$('g'+i).textContent=(v/100).toFixed(0);set('eq_bands',bands.join(','));}
+// Which curve the sliders are editing. A value, not two sets of sliders: the bands are the same
+// eight frequencies either way, and two rows would be two places for the layout to drift.
+let eqProfile='speech';
+const eqCurve=()=>eqProfile==='music'?window.bandsMusic:window.bandsSpeech;
+function drawEqCurve(){const b=eqCurve();b.forEach((v,i)=>{const el=$('b'+i);if(el)el.value=v;
+  $('g'+i).textContent=(v/100).toFixed(0);});}
+function setEqProfile(p){eqProfile=p;activateSeg(['epV','epM'],p==='music'?'epM':'epV');drawEqCurve();}
+function onEq(i,v){const b=eqCurve();b[i]=parseInt(v);$('g'+i).textContent=(v/100).toFixed(0);
+  set(eqProfile==='music'?'eq_bands_music':'eq_bands',b.join(','));}
 
 // ── Slider-binding helper ─────────────────────────
 // A range input paired with a "current value" label, pushing to the server on every drag tick, is
@@ -1162,6 +1180,8 @@ bindSlider('moT','moTv','mai_oi_threshold',fmt2);
 bindSlider('moTs','moTsv','mai_oi_threshold_speaking',fmt2);
 bindSlider('agct','agctv','agc_target',fmt2,v=>v);
 bindSlider('agcm','agcmv','agc_max_gain',fmtX,v=>v);
+bindSlider('lden','ldenv','loudness_mb',v=>(v/100).toFixed(1)+' dB',v=>v);
+bindSlider('hpf','hpfv','dsp_highpass_hz',v=>+v>0?v+' Hz':'tắt',v=>v);
 $('msrc').onchange=e=>set('mic_source',e.target.value);
 $('agc').onchange=e=>set('agc_enabled',e.target.checked);
 $('eqon').onchange=e=>set('eq_enabled',e.target.checked);
