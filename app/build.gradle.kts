@@ -15,8 +15,11 @@ android {
         applicationId = "info.dourok.voicebot.dev"  // TEST: cài song song aiboxplus, không đụng package gốc
         minSdk = 22
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        // One number per release, said in both places and by the git tag. Left at 1 / "1.0" for
+        // months, which is how a fix measured on one build gets reported as still broken on
+        // another -- nothing on the device could say which binary was running.
+        versionCode = 2
+        versionName = "1.0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
