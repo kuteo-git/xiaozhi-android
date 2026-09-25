@@ -5,7 +5,15 @@
 DIR="$(cd "$(dirname "$0")" && pwd)"
 PY=/opt/homebrew/anaconda3/envs/xiaozhi/bin/python
 SH="$DIR/r1sh.py"
-WLOG=/tmp/robot-whisper.log
+# The two logs this reads live in the SERVER repo, not this one. Both are overridable, and both
+# are checked below -- a stale path here used to cost a full 90-second run that then blamed the
+# microphone (see the check under [2]).
+#   STT: whisper was replaced by moonshine (com.user.robot-moonshine.plist writes this path).
+WLOG="${MICTEST_STT_LOG:-/tmp/robot-moonshine.log}"
+#   Server: sibling checkout of robot-esp32. Derived rather than hardcoded -- the absolute path
+#   that used to be here broke twice, once when the repo moved to /Volumes/Data2 and once because
+#   the directory is "robot-esp32", not "robot ESP32".
+SRV="${MICTEST_SERVER_LOG:-$DIR/../../robot-esp32/xiaozhi-esp32-server/main/xiaozhi-server/tmp/server.log}"
 
 echo "[1] tạm dừng watchdog R1 (khỏi nó tự restart aiboxplus giữa chừng)"
 launchctl unload ~/Library/LaunchAgents/com.user.robot-r1watchdog.plist 2>/dev/null
@@ -13,9 +21,14 @@ launchctl unload ~/Library/LaunchAgents/com.user.robot-r1watchdog.plist 2>/dev/n
 echo "[2] tắt aiboxplus + mở app test .dev (nhường mic)"
 $PY "$SH" "am force-stop info.dourok.voicebot; am force-stop info.dourok.voicebot.dev; am start -n info.dourok.voicebot.dev/info.dourok.voicebot.MainActivity 2>&1 | tail -1" 10 2>&1 | grep -aE "Starting|Error"
 
-SRV="/Users/lucnguyen/Documents/git/robot ESP32/xiaozhi-esp32-server/main/xiaozhi-server/tmp/server.log"
-WB=$(wc -l < "$WLOG" 2>/dev/null || echo 0)
-SB=$(wc -l < "$SRV" 2>/dev/null || echo 0)
+# Fail here, not after 90 seconds of silence. `wc -l` on a missing file falls back to 0, so a
+# wrong path reads exactly like a wake word that never landed -- which is how the paths above went
+# stale unnoticed for months.
+for f in "$WLOG" "$SRV"; do
+  [ -r "$f" ] || { echo "✗ không đọc được log: $f"; echo "  (đặt MICTEST_STT_LOG / MICTEST_SERVER_LOG nếu máy mày để chỗ khác)"; exit 1; }
+done
+WB=$(wc -l < "$WLOG")
+SB=$(wc -l < "$SRV")
 sleep 4
 echo "[3] >>> Nói 'OK NABU' (chờ ~1 giây) RỒI nói câu hỏi rõ ràng <<<  (canh 90s)"
 GOTW=0
