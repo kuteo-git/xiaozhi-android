@@ -127,14 +127,6 @@ class ControlServer @Inject constructor(
      * defaults to "" rather than failing. Callers still using the query-string `value` param (the
      * short-field `set()` JS helper) are unaffected.
      */
-    /**
-     * A CSV of millibel band gains as the panel sends it. Unparseable entries are dropped rather
-     * than read as 0: a curve one value short is caught by Settings, which discards a wrong-length
-     * array instead of applying a silently shifted one.
-     */
-    private fun csvInts(v: String): IntArray =
-        v.split(",").mapNotNull { it.trim().toIntOrNull() }.toIntArray()
-
     private fun handleSet(session: IHTTPSession): Boolean {
         val key = session.parameters["key"]?.firstOrNull() ?: return false
         val queryValue = session.parameters["value"]?.firstOrNull()
@@ -166,20 +158,10 @@ class ControlServer @Inject constructor(
             "led_speaking" -> Settings.ledSpeaking = v
             "led_music" -> Settings.ledMusic = v
             "playback_sr" -> v.toIntOrNull()?.let { Settings.playbackSampleRate = it }
-            "eq_enabled" -> { Settings.eqEnabled = v == "true"; playback.applyAudioSettings() }
+            "eq_enabled" -> { Settings.eqEnabled = v == "true"; playback.applyEq() }
             "eq_bands" -> {
-                Settings.eqBandsSpeech = csvInts(v)
-                playback.applyAudioSettings()
-            }
-            "eq_bands_music" -> {
-                Settings.eqBandsMusic = csvInts(v)
-                playback.applyAudioSettings()
-            }
-            "loudness_mb" -> v.toIntOrNull()?.let {
-                Settings.loudnessMb = it; playback.applyAudioSettings()
-            }
-            "dsp_highpass_hz" -> v.toIntOrNull()?.let {
-                Settings.dspHighPassHz = it; playback.applyAudioSettings()
+                Settings.eqBands = v.split(",").mapNotNull { it.trim().toIntOrNull() }.toIntArray()
+                playback.applyEq()
             }
             "volume" -> v.toIntOrNull()?.let { setVolume(it) }
             "llm_provider" -> Settings.llmProvider = v
@@ -238,10 +220,7 @@ class ControlServer @Inject constructor(
         o.put("led_music", Settings.ledMusic)
         o.put("playback_sr", Settings.playbackSampleRate)
         o.put("eq_enabled", Settings.eqEnabled)
-        o.put("eq_bands", JSONArray(Settings.eqBandsSpeech.toList()))
-        o.put("eq_bands_music", JSONArray(Settings.eqBandsMusic.toList()))
-        o.put("loudness_mb", Settings.loudnessMb)
-        o.put("dsp_highpass_hz", Settings.dspHighPassHz)
+        o.put("eq_bands", JSONArray(Settings.eqBands.toList()))
         o.put("mic_recording", MicTest.recording)   // để UI biết bản ghi 30s tự dừng
 
         val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -251,7 +230,7 @@ class ControlServer @Inject constructor(
         // Lets the UI build a slider that can only express values the hardware can actually hold.
         o.put("volume_steps", max)
 
-        playback.eqInfo().let { eq ->
+        playback.eqInfo()?.let { eq ->
             o.put("eq", JSONObject().apply {
                 put("freqs", JSONArray(eq.freqsHz.toList()))
                 put("min", eq.minMb)

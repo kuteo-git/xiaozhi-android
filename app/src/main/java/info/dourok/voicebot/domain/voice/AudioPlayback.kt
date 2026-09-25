@@ -2,13 +2,7 @@ package info.dourok.voicebot.domain.voice
 
 import kotlinx.coroutines.flow.Flow
 
-/**
- * Equalizer band layout (centre frequencies in Hz + the gain range in millibels).
- *
- * The control panel builds its sliders from whatever this reports, which is why the band layout
- * crossing this seam is worth the data class: moving from the platform's five fixed bands to
- * [AudioDsp]'s eight needed no change to `control.html` at all.
- */
+/** Equalizer band layout (center frequencies in Hz + the device's gain range in millibels). */
 data class EqInfo(val freqsHz: IntArray, val minMb: Int, val maxMb: Int)
 
 /** Plays audio (TTS / music) streamed from the server as a flow of Opus frames. */
@@ -25,16 +19,11 @@ interface AudioPlayback {
     /** Discard any buffered audio immediately (used when the user interrupts playback). */
     fun flush()
 
-    /**
-     * Re-read the playback tuning from Settings -- the equalizer curves, the high-pass and the
-     * loudness target -- and apply it live. One call rather than one per knob: they are all "what
-     * the panel has just changed about how playback sounds", and a second entry point is a second
-     * chance to forget one.
-     */
-    fun applyAudioSettings()
+    /** Re-read the equalizer settings (Settings.eqEnabled / eqBands) and apply them live. */
+    fun applyEq()
 
-    /** Equalizer band layout for the control panel. */
-    fun eqInfo(): EqInfo
+    /** Equalizer band layout for the control panel, or null if the device has no equalizer. */
+    fun eqInfo(): EqInfo?
 
     /** Stop playback and release native resources. */
     fun release()

@@ -1,7 +1,6 @@
 package info.dourok.voicebot.data
 
 import android.content.Context
-import info.dourok.voicebot.domain.voice.AudioDsp
 
 /**
  * Runtime, persisted settings the on-device control panel can change without rebuilding.
@@ -74,47 +73,16 @@ object Settings {
         get() = prefs.getInt("volume", -1)
         set(v) = prefs.edit().putInt("volume", v).apply()
 
-    /** Playback tuning (AudioDsp + LoudnessEnhancer) on/off. */
+    /** Equalizer on/off. */
     var eqEnabled: Boolean
-        get() = prefs.getBoolean("eq_enabled", true)
+        get() = prefs.getBoolean("eq_enabled", false)
         set(v) = prefs.edit().putBoolean("eq_enabled", v).apply()
 
-    /**
-     * Per-band gain in millibels, one entry per [AudioDsp.BAND_FREQS_HZ], CSV-encoded. Two curves:
-     * a spoken reply and a song go down the same pipeline and want opposite things.
-     *
-     * A stored value of the WRONG LENGTH is discarded rather than padded, and that is the whole
-     * reason this is not a one-line getter. The platform equalizer these replaced had five bands at
-     * 60/230/910/3600/14000 Hz; reading those five numbers into the first five of eight would apply
-     * a 60 Hz setting to 80 Hz, a 230 Hz setting to 160 Hz and so on -- a curve nobody chose,
-     * silently, on every device that had ever been tuned.
-     */
-    var eqBandsSpeech: IntArray
-        get() = readBands("eq_bands", AppConfig.EQ_BANDS_SPEECH)
+    /** Per-band gain in millibels (one entry per equalizer band), CSV-encoded. */
+    var eqBands: IntArray
+        get() = prefs.getString("eq_bands", "")!!
+            .split(",").mapNotNull { it.trim().toIntOrNull() }.toIntArray()
         set(v) = prefs.edit().putString("eq_bands", v.joinToString(",")).apply()
-
-    var eqBandsMusic: IntArray
-        get() = readBands("eq_bands_music", AppConfig.EQ_BANDS_MUSIC)
-        set(v) = prefs.edit().putString("eq_bands_music", v.joinToString(",")).apply()
-
-    private fun readBands(key: String, default: String): IntArray {
-        val n = AudioDsp.BAND_FREQS_HZ.size
-        val stored = prefs.getString(key, "")!!
-            .split(",").mapNotNull { it.trim().toIntOrNull() }
-        val use = if (stored.size == n) stored
-        else default.split(",").mapNotNull { it.trim().toIntOrNull() }
-        return use.toIntArray()
-    }
-
-    /** LoudnessEnhancer target gain in millibels; 0 = off. This is what answers "nghe quá nhỏ". */
-    var loudnessMb: Int
-        get() = prefs.getInt("loudness_mb", AppConfig.LOUDNESS_MB)
-        set(v) = prefs.edit().putInt("loudness_mb", v.coerceIn(0, 2000)).apply()
-
-    /** Corner of the protective high-pass in Hz; 0 = off. See [AudioDsp]. */
-    var dspHighPassHz: Int
-        get() = prefs.getInt("dsp_highpass_hz", AppConfig.DSP_HIGH_PASS_HZ)
-        set(v) = prefs.edit().putInt("dsp_highpass_hz", v.coerceIn(0, 300)).apply()
 
     /** Playback sample rate (24000 / 48000). Applied on app restart; must match the server. */
     var playbackSampleRate: Int
