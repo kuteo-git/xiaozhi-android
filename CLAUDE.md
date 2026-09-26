@@ -1,8 +1,9 @@
 # CLAUDE.md — Xiaozhi Android (R1 thin client)
 
-Onboarding cho AI. Đọc cùng `README.md` (human-facing, features/architecture) và repo server ở
-`/Users/lucnguyen/Documents/git/robot-esp32/` (server + services + toàn hệ thống) — xem `README.md`
-và `SETUP.md` bên đó; repo này KHÔNG có `CLAUDE.md` riêng.
+Onboarding cho AI. Đọc cùng `README.md` (human-facing, features/architecture) và repo server
+[kuteo-git/robot-esp32](https://github.com/kuteo-git/robot-esp32), trên máy này ở
+`/Volumes/Data2/git/robot-esp32/` (server + services + toàn hệ thống) — xem `README.md` và
+`SETUP.md` bên đó; repo đó KHÔNG có `CLAUDE.md` riêng.
 
 ## Là gì
 Android voice client cho self-hosted **xiaozhi-esp32-server**. **Thin client**: máy chỉ thu audio,
@@ -19,7 +20,7 @@ Chạy chính trên **PHICOMM R1** (Android 5.1.1 / API 22) thay firmware gốc.
 ## Build + Install (đã verify release end-to-end 2026-07-28)
 ```bash
 # BUILD
-cd /Users/lucnguyen/Documents/git/xiaozhi-android
+cd /Volumes/Data2/git/xiaozhi-android
 export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
 ./gradlew :app:assembleRelease        # -> app/build/outputs/apk/release/app-release.apk (~15 MB)  <-- BẢN ĐỂ CHẠY
 ./gradlew :app:assembleDebug          # -> app/build/outputs/apk/debug/app-debug.apk   (~25 MB)
