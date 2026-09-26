@@ -10,6 +10,7 @@ import dagger.hilt.android.HiltAndroidApp
 import dagger.hilt.components.SingletonComponent
 import info.dourok.voicebot.control.ControlServer
 import info.dourok.voicebot.data.Settings
+import info.dourok.voicebot.domain.bluetooth.BtController
 import java.io.File
 import java.io.PrintWriter
 import java.io.StringWriter
@@ -24,6 +25,7 @@ class VApplication : Application() {
     @InstallIn(SingletonComponent::class)
     interface ControlEntryPoint {
         fun controlServer(): ControlServer
+        fun btController(): BtController
     }
 
     override fun onCreate() {
@@ -31,8 +33,12 @@ class VApplication : Application() {
         Settings.init(this)
         // Start the on-device control panel web server (http://<r1-ip>:8088).
         try {
-            EntryPointAccessors.fromApplication(this, ControlEntryPoint::class.java)
-                .controlServer().startServer()
+            val entry = EntryPointAccessors.fromApplication(this, ControlEntryPoint::class.java)
+            entry.controlServer().startServer()
+            // Registers the Bluetooth receivers and reaches for the remembered speaker once. Here
+            // rather than inside the panel: the panel is its only caller today, but reconnecting
+            // after a power cut has to happen whether or not anybody opens a browser.
+            entry.btController().start()
         } catch (e: Exception) {
             Log.e("VApplication", "control server start failed: ${e.message}")
         }

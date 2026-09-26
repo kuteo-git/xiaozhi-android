@@ -19,8 +19,8 @@ interface AudioPlayback {
     /** Discard any buffered audio immediately (used when the user interrupts playback). */
     fun flush()
 
-    /** Re-read the equalizer settings (Settings.eqEnabled / eqBands) and apply them live. */
-    fun applyEq()
+    /** Re-read the playback tuning (equalizer + loudness) from Settings and apply it live. */
+    fun applyAudioSettings()
 
     /** Equalizer band layout for the control panel, or null if the device has no equalizer. */
     fun eqInfo(): EqInfo?

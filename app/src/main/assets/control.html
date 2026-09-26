@@ -214,6 +214,10 @@ body.fab-hide .fab{opacity:0;pointer-events:none;transform:translateY(12px);}
 .ib-mic{background:linear-gradient(135deg,#22c55e,#4ade80);}
 .ib-led{background:linear-gradient(135deg,#eab308,#facc15);}
 .ib-sys{background:linear-gradient(135deg,#64748b,#94a3b8);}
+.ib-bt{background:linear-gradient(135deg,#0ea5e9,#38bdf8);}
+/* "Audio is going here right now". A dot rather than a background tint: the two card surfaces are
+   four steps apart (--card vs --card2) and a tint between them cannot carry a state. */
+.bt-dot{width:7px;height:7px;border-radius:50%;background:var(--ok,#22c55e);flex-shrink:0;}
 .ib-ai{background:linear-gradient(135deg,#6366f1,#818cf8);}
 .ib-srv{background:linear-gradient(135deg,#0ea5e9,#38bdf8);}
 .icon-mini{width:20px;height:20px;border-radius:6px;flex-shrink:0;display:grid;place-items:center;color:#fff;}
@@ -572,7 +576,8 @@ select:active,select:focus{box-shadow:0 0 0 4px var(--grad-dim);}
     <div class="card">
       <div class="ch"><span class="icon-badge ib-amp"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h3l5-4v12l-5-4H3z" fill="currentColor" stroke="none"/><path d="M14 7c1 1 1 5 0 6"/><path d="M16.5 5c2 2 2 8 0 10"/></svg></span><h2>Âm thanh</h2></div>
       <div class="row"><label>Âm lượng</label><input type="range" id="vol" min="0" max="100"><span class="val" id="volv">–</span></div>
-      <div class="hint">Kéo để chỉnh âm lượng loa. Áp dụng ngay, không cần restart.</div>
+      <div class="row"><label>Độ to</label><input type="range" id="lden" min="0" max="2000" step="100"><span class="val" id="ldenv">–</span></div>
+      <div class="hint">Kéo để chỉnh âm lượng loa. Áp dụng ngay, không cần restart.<details><summary>Chi tiết</summary><p><b>Độ to</b> là LoudnessEnhancer của hệ thống — nó có limiter nên tăng mà không rè, và nó là chỗ để chữa "nghe quá nhỏ" chứ không phải kéo dải tần lên. Mặc định 0 (tắt): đo ngày 25/07/2026, +3 dB boost đã làm loa trong máy rè trong khi file gốc vẫn sạch, nên trần ở đó là trần analog. Loa Bluetooth có ampli riêng nên chịu được nhiều hơn — đây là con số của cái loa đang nghe, không phải của mọi máy.</p></details></div>
     </div>
     <div class="card">
       <div class="ch"><span class="icon-badge ib-voice"><svg viewBox="0 0 20 20" fill="currentColor"><rect x="2" y="7" width="2.2" height="6" rx="1.1"/><rect x="6.3" y="4" width="2.2" height="12" rx="1.1"/><rect x="10.6" y="1" width="2.2" height="18" rx="1.1"/><rect x="14.9" y="4" width="2.2" height="12" rx="1.1"/></svg></span><h2>Giọng đọc</h2></div>
@@ -650,6 +655,15 @@ select:active,select:focus{box-shadow:0 0 0 4px var(--grad-dim);}
       <div class="ch"><span class="icon-badge ib-srv"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="7"/><path d="M3 10h14M10 3c2.5 2 2.5 12 0 14M10 3c-2.5 2-2.5 12 0 14"/></svg></span><h2>Server</h2></div>
       <div class="row"><label>OTA URL</label><input class="codein" id="ota" placeholder="http://host:8003/xiaozhi/ota/"></div>
       <div class="row" style="gap:8px"><button class="btn rec" style="flex:1;width:auto" onclick="connectServer()">Connect</button><span class="hint" id="srvStat" style="flex:1"></span></div>
+    </div>
+
+    <div class="card">
+      <div class="ch"><span class="icon-badge ib-bt"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polyline points="5.4 5.4 14.6 14.6 10 19.2 10 0.8 14.6 5.4 5.4 14.6"/></svg></span><h2>Bluetooth</h2><label class="sw"><input type="checkbox" id="btOn" onchange="btEnable(this.checked)" aria-label="Bật/tắt Bluetooth"><span></span></label></div>
+      <div class="row" style="gap:8px"><button class="btn rec" style="flex:1;width:auto" id="btScanBtn" onclick="btScan()">Quét</button><button class="btn rec" style="flex:1;width:auto" onclick="btSay()">Phát thử</button></div>
+      <div class="row"><label>Tự nối lại</label><label class="sw sw-sm"><input type="checkbox" id="btAuto" onchange="btAutoSet(this.checked)" aria-label="Tự nối lại thiết bị cuối"><span></span></label></div>
+      <div class="row"><label>Hiện tất cả</label><label class="sw sw-sm"><input type="checkbox" id="btAll" onchange="btRender()" aria-label="Hiện cả thiết bị không phải loa"><span></span></label></div>
+      <div id="btList"></div>
+      <div class="hint" id="btStat">Ghép đôi một loa hoặc tai nghe để phát tiếng ra đó.<details><summary>Chi tiết</summary><p>Nối rồi thì <b>mọi</b> tiếng của máy đi ra thiết bị đó — câu trả lời, nhạc và bản tin — còn loa trong máy im. Quét chạy 12 giây một lần bấm chứ không chạy liên tục, vì Bluetooth và wifi dùng chung radio và panel này đi qua wifi. Equalizer vẫn giữ nguyên curve, nhưng curve đó đo cho loa của máy nên nên tắt hoặc chỉnh lại khi nghe qua loa khác.</p></details></div>
     </div>
 
     <div class="card">
@@ -788,7 +802,10 @@ const set=(k,v)=>fetch(`/api/set?key=${k}&value=${encodeURIComponent(v)}`,{metho
 function restart(){if(confirm('Restart app?'))fetch('/api/restart',{method:'POST'});}
 function tab(t){['set','setup','media'].forEach(x=>{$('p'+x).classList.toggle('on',x===t);$('t'+x).classList.toggle('on',x===t);});
   try{localStorage.setItem('r1-tab',t);}catch(e){}
-  if(t==='media')mediaPollStart();else mediaPollStop();}
+  if(t==='media')mediaPollStart();else mediaPollStop();
+  // Bluetooth state is polled only while its tab is on screen, for the reason media state is: a
+  // scan's results change every second and nobody needs them when the card is not being looked at.
+  if(t==='setup')btPollStart();else btPollStop();}
 
 // ── Segmented-control helper ─────────────────────
 // Every segsel/tab group (wake engine, sample rate, log filter, ...) is "add .on to the matching
@@ -1090,6 +1107,7 @@ function render(s){
   // Never redraw the slider mid-drag (same guard the LED fields use below): the poll landing a
   // moment after release is what made the value visibly jump back.
   if(document.activeElement!==$('vol')){$('vol').value=volIdx(s.volume);$('volv').textContent=s.volume+'%';}
+  if(document.activeElement!==$('lden')){$('lden').value=s.loudness_mb||0;$('ldenv').textContent=((s.loudness_mb||0)/100).toFixed(1)+' dB';}
   $('ws').value=parseFloat(s.wake_sensitivity);$('wsv').textContent=s.wake_sensitivity;
   $('wss').value=parseFloat(s.wake_sensitivity_speaking);$('wssv').textContent=s.wake_sensitivity_speaking;
   if(s.mic_source!=null)$('msrc').value=s.mic_source;
@@ -1156,6 +1174,7 @@ function bindSlider(rangeId,valId,key,fmt,sendFmt){
 const fmt2=v=>(+v).toFixed(2);
 const fmtX=v=>(+v).toFixed(0)+'x';
 $('vol').oninput=e=>{const p=volPct(e.target.value);$('volv').textContent=p+'%';set('volume',p);};
+bindSlider('lden','ldenv','loudness_mb',v=>(v/100).toFixed(1)+' dB',v=>v);
 bindSlider('ws','wsv','wake_sensitivity',fmt2);
 bindSlider('wss','wssv','wake_sensitivity_speaking',fmt2);
 bindSlider('moT','moTv','mai_oi_threshold',fmt2);
@@ -1302,6 +1321,84 @@ function _haLines(){return JSON.parse($('haSaved').dataset.lines||'[]');}
 async function _saveHaLines(lines){await fetch(`/api/set?key=ha_devices&value=${encodeURIComponent(lines.join('\n'))}`,{method:'POST'});renderHaSaved(lines.join('\n'));}
 function editHaLine(i,v){const l=_haLines();l[i]=v.trim();_saveHaLines(l);}
 function removeHaLine(i){const l=_haLines();l.splice(i,1);_saveHaLines(l);}
+
+// ── Bluetooth (A2DP source: this box plays OUT through a speaker/headphones) ─────────
+// The opposite direction -- a phone streaming into the R1 -- is the platform's own A2dpSinkService
+// and is deliberately not driven from here.
+let btPollTimer=null,btState=null,btErr='';
+// elapsedRealtime is the device's; here Date.now() is fine because this only suppresses a
+// write-back for a few seconds. Enabling the adapter takes seconds to report back, and a switch
+// that snaps back under the finger reads as a broken control.
+let btEnablePendingUntil=0,btEnableWanted=false;
+const BT_ENABLE_GRACE_MS=8000;
+
+function btPollStart(){if(btPollTimer)return;btPollTick();btPollTimer=setInterval(btPollTick,1000);}
+function btPollStop(){clearInterval(btPollTimer);btPollTimer=null;}
+async function btPollTick(){
+  try{btState=await(await fetch('/api/bt/state')).json();btRender();}catch(e){}
+}
+
+async function btCall(url){
+  try{const j=await(await fetch(url,{method:'POST'})).json();
+    btErr=j.ok?'':(j.error||'Lỗi không rõ');}
+  catch(e){btErr='Không gọi được máy';}
+  btPollTick();
+}
+function btEnable(on){btEnableWanted=on;btEnablePendingUntil=Date.now()+BT_ENABLE_GRACE_MS;btCall('/api/bt/enable?on='+(on?1:0));}
+function btAutoSet(on){btCall('/api/bt/auto?on='+(on?1:0));}
+function btScan(){btErr='';btCall('/api/bt/scan/start');}
+function btPair(a){btCall('/api/bt/pair?addr='+encodeURIComponent(a));}
+function btConnect(a){btCall('/api/bt/connect?addr='+encodeURIComponent(a));}
+function btDisconnect(a){btCall('/api/bt/disconnect?addr='+encodeURIComponent(a));}
+function btForget(a,name){if(!confirm('Xoá ghép đôi với '+(name||a)+'?'))return;
+  btCall('/api/bt/forget?addr='+encodeURIComponent(a));}
+// Same route as the bulletin's "Phát thử" and as the chat box: one proven path to making the box
+// speak, rather than a bespoke one for this card.
+function btSay(){fetch('/api/say?text='+encodeURIComponent('nói thử một câu'),{method:'POST'});}
+
+function btRow(d){
+  const label=d.name||d.address;
+  const sub=[d.address,d.rssi!=null?d.rssi+' dBm':'',d.bonded?'đã ghép đôi':''].filter(Boolean).join(' · ');
+  const act=d.connected
+    ? `<button class="tbtn" onclick="btDisconnect('${d.address}')" aria-label="Ngắt">Ngắt</button>`
+    : (d.bonded
+        ? `<button class="tbtn" onclick="btConnect('${d.address}')" aria-label="Nối">Nối</button>`
+        : `<button class="tbtn" onclick="btPair('${d.address}')" aria-label="Ghép đôi">Ghép</button>`);
+  const forget=d.bonded
+    ? `<button class="tbtn" onclick="btForget('${d.address}','${label.replace(/'/g,'')}')" aria-label="Xoá ghép đôi">Xoá</button>`
+    : '';
+  return `<div class="row" style="margin:6px 0;gap:6px;align-items:center">
+    ${d.connected?'<span class="bt-dot"></span>':''}
+    <div class="li-info"><div class="li-title">${label}</div><div class="li-sub">${sub}</div></div>
+    ${act}${forget}</div>`;
+}
+
+function btRender(){
+  const s=btState;if(!s)return;
+  // A toggle the user just flipped wins over the poll until the adapter has had time to answer.
+  if(Date.now()<btEnablePendingUntil&&s.enabled!==btEnableWanted){$('btOn').checked=btEnableWanted;}
+  else{$('btOn').checked=!!s.enabled;btEnablePendingUntil=0;}
+  $('btAuto').checked=!!s.auto_reconnect;
+  const scanning=!!s.scanning;
+  $('btScanBtn').textContent=scanning?'Đang quét…':'Quét';
+  $('btScanBtn').disabled=scanning||!s.enabled;
+  if(!s.supported){$('btList').innerHTML='';$('btStat').textContent='Máy này không có Bluetooth.';return;}
+  if(!s.enabled){$('btList').innerHTML='';$('btStat').textContent='Bluetooth đang tắt — bật công tắc ở trên.';return;}
+  // The filter is here, not on the server: the list already carries `audio` per device, so changing
+  // your mind about it costs no round trip. A bonded device always shows -- a speaker that
+  // misdeclares its class must not disappear the moment it is paired.
+  const showAll=$('btAll').checked;
+  const rows=(s.devices||[]).filter(d=>showAll||d.audio||d.bonded);
+  $('btList').innerHTML=rows.map(btRow).join('')
+    ||(scanning?'<div class="hint">(đang tìm…)</div>':'<div class="hint">(chưa thấy thiết bị nào — bấm Quét)</div>');
+  const conn=(s.devices||[]).find(d=>d.connected);
+  const err=btErr||s.error||'';
+  $('btStat').textContent=err?('✗ '+err)
+    :s.busy==='pairing'?'Đang ghép đôi…'
+    :s.busy==='connecting'?'Đang nối…'
+    :conn?('Đang phát qua '+(conn.name||conn.address)+' — loa trong máy im.')
+    :'Chưa nối thiết bị nào, tiếng ra loa trong máy.';
+}
 
 // ── Media Player ──────────────────────────────────
 let mediaSearchResultsCache=[];  // last manual search results (persisted across reloads)

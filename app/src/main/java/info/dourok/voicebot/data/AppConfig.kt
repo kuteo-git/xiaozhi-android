@@ -76,6 +76,19 @@ object AppConfig {
     const val LED_LISTENING = "501"
     const val LED_SPEAKING = "204"
     const val LED_MUSIC = "309"
+    /**
+     * Target gain for the platform's LoudnessEnhancer, in millibels. It is the one effect registered
+     * on this box that raises level with a limiter under it (`audio_effects.conf` -> libldnhncr.so),
+     * so it -- not the equalizer -- is what answers "nghe quá nhỏ".
+     *
+     * Defaults to **off**, unlike the tone curves. This household has already measured what raising
+     * level blind costs: run_vieneu.sh carries the note from 2026-07-25 that +3 dB of TTS boost
+     * crackled on the internal speaker while the raw WAV was clean, so the ceiling there is analog.
+     * The case this exists for is a Bluetooth speaker, which has its own amplifier and its own
+     * ceiling -- a number that belongs to the room, not to every install.
+     */
+    const val LOUDNESS_MB = 0
+
 
     /**
      * Sensitivity used while the assistant is speaking / playing music. Kept LOW so the assistant's

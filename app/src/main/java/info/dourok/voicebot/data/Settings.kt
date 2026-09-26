@@ -84,6 +84,11 @@ object Settings {
             .split(",").mapNotNull { it.trim().toIntOrNull() }.toIntArray()
         set(v) = prefs.edit().putString("eq_bands", v.joinToString(",")).apply()
 
+    /** LoudnessEnhancer target gain in millibels; 0 = off. This is what answers "nghe quá nhỏ". */
+    var loudnessMb: Int
+        get() = prefs.getInt("loudness_mb", AppConfig.LOUDNESS_MB)
+        set(v) = prefs.edit().putInt("loudness_mb", v.coerceIn(0, 2000)).apply()
+
     /** Playback sample rate (24000 / 48000). Applied on app restart; must match the server. */
     var playbackSampleRate: Int
         get() = prefs.getInt("playback_sr", AppConfig.PLAYBACK_SAMPLE_RATE)
@@ -120,6 +125,21 @@ object Settings {
     var wakeEngine: String
         get() = prefs.getString("wake_engine", "alexa")!!
         set(v) = prefs.edit().putString("wake_engine", v).apply()
+
+    // ── Bluetooth audio out (Setup tab) ─────────────────────────────────────
+    /** Address of the last speaker/headphones connected on purpose. "" = none remembered. */
+    var btLastDevice: String
+        get() = prefs.getString("bt_last_device", "")!!
+        set(v) = prefs.edit().putString("bt_last_device", v).apply()
+
+    /**
+     * Reach for [btLastDevice] again at app start, when the adapter comes on, and when the speaker
+     * itself reconnects. On by default: the daily bulletin reads at a fixed time, and after a power
+     * cut nobody is standing at the panel to press Connect first.
+     */
+    var btAutoReconnect: Boolean
+        get() = prefs.getBoolean("bt_auto_reconnect", true)
+        set(v) = prefs.edit().putBoolean("bt_auto_reconnect", v).apply()
 
     // ── Home Assistant (Setup tab) ──────────────────────────────────────────
     var haUrl: String

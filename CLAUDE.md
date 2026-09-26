@@ -64,6 +64,7 @@ $ADB -s 10.25.113.209:5555 push app/build/outputs/apk/release/app-release.apk /d
 | Codec | `OpusEncoder/Decoder/StreamPlayer.kt` | Opus 16kHz. |
 | Playback | `data/voice/OpusAudioPlayback.kt` | AudioTrack + Equalizer (`domain/voice/AudioPlayback.kt`). |
 | LED | `data/voice/MsgCenterLedIndicator.kt` | LED ring QUA system service **msgcenter** (`sendMsg(4096,code,0)` reflection) — KHÔNG ghi sysfs. Không bật được cả 2 vòng đèn cùng lúc. |
+| Bluetooth | `domain/bluetooth/BtController.kt` + `data/bluetooth/{AndroidBtController,BtHidden}.kt` | **A2DP source**: ghép đôi loa/tai nghe rồi phát tiếng RA đó. Chiều ngược (điện thoại stream VÀO R1) là `A2dpSinkService` của platform, cố ý không điều khiển từ đây. Xem Gotchas. |
 | Config | `data/AppConfig.kt` (default) + `data/Settings.kt` (SharedPreferences, runtime) | Settings đổi live qua control panel; một số cần restart app (mic_source, sample rate). |
 | Protocol | `protocol/WebsocketProtocol.kt` | WS tới server `ws://<mac>:8000/xiaozhi/v1/`. Connect-on-wake. |
 | Media | `domain/voice/MediaSessionState.kt` + `MediaCommands.kt` | Nhạc đi CHUNG pipeline voice (không có player riêng — ExoPlayer đã gỡ). State `IDLE/DOWNLOADING/PLAYING/PAUSED/STOPPED` + queue, server đẩy xuống qua WS. |
@@ -88,6 +89,7 @@ Web control on-device (NanoHTTPD) như control center của aiboxplus. Mở `htt
   | Setup | `/api/setup/server?ota=`, `/api/setup/wake?engine=`, `/api/setup/llm` |
   | LLM | `/api/llm/models`, `/api/llm/test` |
   | Home Assistant | `/api/ha/test`, `/api/ha/devices` |
+  | Bluetooth | `/api/bt/state`, `/api/bt/enable?on=`, `/api/bt/scan/{start,stop}`, `/api/bt/{pair,connect,disconnect,forget}?addr=`, `/api/bt/auto?on=` |
 
   `/api/state.chat[]` gồm `sender`,`text`,`time` — epoch-ms THẬT lấy từ `ConversationLog.Entry.time`
   lúc tin nhắn xảy ra, KHÔNG phải giờ client poll thấy.
@@ -151,6 +153,84 @@ Watchdog `com.user.robot-r1watchdog` tự `am force-stop; am start` khi app ch�
   `--headless=new --allow-file-access-from-files --dump-dom`, đọc số đo từ script chèn vào trang.
 - Đổi `AGC_MAX_GAIN` slider max ở HTML; server `/api/set` KHÔNG clamp → set >slider được qua curl.
 - Native (Snowboy/Opus) cần NDK; build đầu chậm.
+
+### Bluetooth: phát tiếng ra loa ngoài (A2DP source) — đo 26/09/2026
+
+Máy **có** Bluetooth và có cả hai chiều: chip **AP6335** trên UART `/dev/ttyS1`, addr
+`98:BB:99:3F:2E:2C`, tên `Phicomm_R1_2E2B`; chạy sẵn `A2dpService` (source), `A2dpSinkService`,
+`HeadsetService`, `AvrcpControllerService`; `audio_policy.conf` có cả `AUDIO_DEVICE_OUT_ALL_A2DP` và
+`AUDIO_DEVICE_IN_BLUETOOTH_A2DP`. App chỉ làm chiều **source**.
+
+- **Ba method phải gọi bằng reflection**, cả ba đã xác nhận CÓ trên ROM này:
+  `BluetoothDevice.removeBond()` (= "forget"), `BluetoothA2dp.connect()/disconnect()`. Còn
+  `createBond()`, `getBondState()`, `setPin()`, `setPairingConfirmation()`, `getProfileProxy()`,
+  `startDiscovery()` đều public — kiểm bằng `javap` trên `android-35/android.jar`. R8 không đổi tên
+  class framework nên **không cần keep rule**, nhưng reflection hụt chỉ lộ ra lúc chạy → mỗi lỗi
+  mang tên method về tận panel thay vì log rồi im.
+- **`BluetoothA2dp.connect()` trả `false` KHÔNG có nghĩa là thất bại.** Đo được: trả false rồi 6
+  giây sau loa vẫn nối; nó trả false cả cho địa chỉ chưa ghép đôi (chỉ nghĩa là "đã nhận lệnh" hoặc
+  "đang connecting"). Vì thế `bt_last_device` **chỉ ghi khi broadcast `STATE_CONNECTED` bắn** — bằng
+  chứng duy nhất loa thật sự nhận tiếng. Bản đầu ghi ngay trong `connect()`, và một địa chỉ bịa gõ
+  tay đã thành "thiết bị được nhớ".
+- **Ghép đôi tự đồng ý, nhưng chỉ trong 30 giây sau khi người bấm Pair.** Máy không màn hình nên
+  không ai trả lời được hộp thoại PIN; auto-accept vô điều kiện thì thiết bị lạ trong nhà ghép được
+  vào loa. Cửa sổ đo bằng **`elapsedRealtime`, không phải wall clock** — đồng hồ máy nhảy khi NTP về
+  sau boot, và một cửa sổ đo bằng đồng hồ nhảy là cửa sổ không bao giờ đóng hoặc không bao giờ mở.
+- **Huỷ quét trước mọi Pair/Connect.** Radio đang nhảy tần không đáp ứng được page — ghép đôi lúc
+  đang quét là cách làm nó "lúc được lúc không".
+- **Quét một lần 12 giây mỗi lần bấm, không chạy liên tục.** AP6335 dùng chung radio với wifi, và
+  panel đi qua wifi. **Đo được: không rớt** — panel trả lời 0.06–1.15s suốt lúc quét, 8 thiết bị
+  trong 14s rồi tự dừng.
+- **Auto-reconnect tạm dừng khi bấm Disconnect, và trạng thái đó CỐ Ý không persist.** "Ngừng phát
+  ra loa đó" là ý định của phiên này; giữ nó qua restart thì một lần ngắt hôm nay làm bản tin sáng
+  mai không ra loa — đúng cái bẫy `MediaSessionState` ở trên. Đo được: ngắt → 24 giây không tự nối
+  lại; ngắt rồi restart app → `tự nối lại (profile ready) -> ok`.
+- **Kết nối A2DP nằm trong stack chứ không trong app**, nên nó sống qua `pm install -r` — và khi đó
+  không có broadcast `CONNECTION_STATE_CHANGED` nào bắn. Mọi thứ cần làm "lúc nối" cũng phải làm
+  lúc profile proxy sẵn sàng mà đã có thiết bị nối sẵn.
+- Danh sách quét mang cờ `audio` chứ không lọc ở server, nên switch "hiện tất cả" không tốn round
+  trip. Loa rẻ khai báo sai device class là chuyện có thật.
+
+### Âm thanh qua Bluetooth: nén là thật, và âm lượng đi vào bucket sai
+
+Đo với một loa thật (`Kitchen speaker`) 26/09/2026.
+
+- **Nén là thật và không sửa được từ app.** Stack có ký hiệu `sbc` và **0 hit** cho
+  `aac`/`aptx`/`ldac` → **SBC only**. Module `a2dp` chỉ khai báo **44100** trong khi app phát
+  **48000** → resample mọi frame, và **không đổi `playback_sr` để tránh được**: Opus chỉ định nghĩa
+  48/24/16/12/8 kHz, không có 44.1. Chỉnh bitpool hay thêm AAC đều phải thay
+  `bluetooth.default.so` trong `/system` trên một máy đã mod — ghi lại là đã cân nhắc và xếp cuối.
+- **Ba output, và track của app nằm trên cái GỘP hai thiết bị** (`dumpsys media.audio_policy`):
+
+  | output | SR | Devices mask | là gì |
+  |---|---|---|---|
+  | 2 | 48000 | `00080000` | SPDIF |
+  | 304 | 44100 | `00000080` | A2DP thuần |
+  | **305** | 44100 | `00080080` | **SPDIF + A2DP** ← track + effect chain của app |
+
+- **Máy giữ một chỉ số âm lượng cho MỖI thiết bị ra, và `setStreamVolume` ghi vào chỉ số sai.**
+  `dumpsys audio` trước khi sửa: `STREAM_MUSIC  (default): 6, (spdif): 15` — **không có entry nào
+  cho A2DP**, nên nó rơi về `default` = 6/15. `getDeviceForStream` trên ROM này trả về SPDIF
+  (`0x80000`, lớn hơn A2DP `0x80` về số) nên mọi lần kéo slider đều ghi vào bucket mà loa không
+  đọc: panel báo 100% trên một đường ra đang ở 6/15.
+  - Sửa bằng `AudioSystem.setStreamVolumeIndex(stream, index, device)` (hidden) cho cả ba hằng A2DP
+    `0x80/0x100/0x200`. Kiểm ở tầng native, `dumpsys media.audio_policy` bảng Streams: stream 03
+    giờ là `0080 : 15, 0100 : 15, 0200 : 15` ở chỗ trước đó không có gì. **+9 nấc trên 15.**
+  - **`dumpsys audio` KHÔNG thấy thay đổi này, và điều đó không chứng minh gì**: nó in map của
+    AudioService (Java), còn `setStreamVolumeIndex` ghi thẳng policy manager tầng native. Phải nhìn
+    `dumpsys media.audio_policy`.
+- **`LoudnessEnhancer` là thứ chữa "nghe quá nhỏ", không phải kéo dải EQ lên** — nó là effect duy
+  nhất trên máy có limiter đi kèm (`audio_effects.conf` → `libldnhncr.so`). Nó **không** phụ thuộc
+  `eq_enabled`: mức to và âm sắc là hai câu hỏi khác nhau, và ca đẻ ra nó là một loa Bluetooth quá
+  nhỏ *trong lúc EQ đã tắt* — một switch dùng chung thì đúng ca đó không với tới được.
+  Mặc định `LOUDNESS_MB = 0`: ghi chú bên `robot-esp32/run_vieneu.sh` từ 25/07/2026 đã đo +3 dB
+  boost làm loa trong máy rè trong khi file gốc sạch, nên trần ở đó là trần analog. Loa Bluetooth có
+  ampli riêng, nên con số này là con số của **cái loa đang nghe**, không phải của mọi máy.
+- **EQ và loudness đều đi theo sang đường Bluetooth**: `dumpsys media.audio_flinger` cho
+  `2 effects for session <id>` trên **io=305**, tức output có A2DP trong mask.
+- **Đừng đo âm lượng bằng mic nội bộ với `/api/say`.** Đã thử và nó vô dụng: `/api/say` đi qua LLM
+  nên mỗi lần nói một câu khác, và bậc thang đo ra **không đơn điệu** (vol=0 → −39.4 dBFS, vol=50 →
+  −42.8, vol=100 → −27.3). Muốn đo mức thì phải phát cùng một file mỗi lần.
 
 ## Suggestions
 - Commit trên `main`, đừng để lẫn `.idea/*` (đang bị track — cân nhắc gitignore).

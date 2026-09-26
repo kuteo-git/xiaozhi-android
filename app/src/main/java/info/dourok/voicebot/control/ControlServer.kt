@@ -11,6 +11,8 @@ import fi.iki.elonen.NanoHTTPD.Response
 import fi.iki.elonen.NanoHTTPD.newFixedLengthResponse
 import info.dourok.voicebot.data.Settings
 import info.dourok.voicebot.data.maskApiKey
+import info.dourok.voicebot.domain.bluetooth.BtController
+import info.dourok.voicebot.domain.bluetooth.BtResult
 import info.dourok.voicebot.domain.voice.AudioPlayback
 import info.dourok.voicebot.domain.voice.AppLog
 import info.dourok.voicebot.domain.voice.ConversationLog
@@ -43,6 +45,7 @@ class ControlServer @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val playback: AudioPlayback,
     private val led: LedIndicator,
+    private val bt: BtController,
 ) : NanoHTTPD(PORT) {
 
     fun startServer() {
@@ -99,6 +102,21 @@ class ControlServer @Inject constructor(
             "/api/media/state" -> json(buildMediaState())
             "/api/logs" -> json(buildLogs(param(session, "since").toLongOrNull() ?: 0L))
             "/api/logs/clear" -> { AppLog.clear(); AppLog.i("Đã xoá log"); json("""{"ok":true}""") }
+            // Bluetooth audio out. Its own endpoint, polled only while the card is open: a scan's
+            // results change every second and /api/state is polled 1.5s forever by every browser in
+            // the house. Same split as /api/media/state.
+            "/api/bt/state" -> json(buildBtState())
+            "/api/bt/enable" -> json(bt.setEnabled(param(session, "on") == "1"))
+            "/api/bt/scan/start" -> json(bt.startScan())
+            "/api/bt/scan/stop" -> { bt.stopScan(); json("""{"ok":true}""") }
+            "/api/bt/pair" -> json(bt.pair(param(session, "addr")))
+            "/api/bt/connect" -> json(bt.connect(param(session, "addr")))
+            "/api/bt/disconnect" -> json(bt.disconnect(param(session, "addr")))
+            "/api/bt/forget" -> json(bt.forget(param(session, "addr")))
+            "/api/bt/auto" -> {
+                bt.setAutoReconnect(param(session, "on") == "1")
+                json("""{"ok":true}""")
+            }
             "/api/news/save" -> json(handleNewsSave(session))
             // "Phát thử" is just the spoken request, typed: the server's get_news_bulletin tool
             // does the rest. Same path as /api/say and as the daily alarm, so all three triggers
@@ -158,10 +176,13 @@ class ControlServer @Inject constructor(
             "led_speaking" -> Settings.ledSpeaking = v
             "led_music" -> Settings.ledMusic = v
             "playback_sr" -> v.toIntOrNull()?.let { Settings.playbackSampleRate = it }
-            "eq_enabled" -> { Settings.eqEnabled = v == "true"; playback.applyEq() }
+            "eq_enabled" -> { Settings.eqEnabled = v == "true"; playback.applyAudioSettings() }
             "eq_bands" -> {
                 Settings.eqBands = v.split(",").mapNotNull { it.trim().toIntOrNull() }.toIntArray()
-                playback.applyEq()
+                playback.applyAudioSettings()
+            }
+            "loudness_mb" -> v.toIntOrNull()?.let {
+                Settings.loudnessMb = it; playback.applyAudioSettings()
             }
             "volume" -> v.toIntOrNull()?.let { setVolume(it) }
             "llm_provider" -> Settings.llmProvider = v
@@ -200,6 +221,9 @@ class ControlServer @Inject constructor(
         if (max <= 0) return
         val step = Math.round(percent.coerceIn(0, 100) * max / 100f).coerceIn(0, max)
         am.setStreamVolume(AudioManager.STREAM_MUSIC, step, 0)
+        // And again for the Bluetooth output, which the call above does not reach -- see
+        // BtController.applyOutputVolume. Harmless when nothing is connected: it refuses.
+        bt.applyOutputVolume(step)
         Settings.volume = percent
     }
 
@@ -221,11 +245,16 @@ class ControlServer @Inject constructor(
         o.put("playback_sr", Settings.playbackSampleRate)
         o.put("eq_enabled", Settings.eqEnabled)
         o.put("eq_bands", JSONArray(Settings.eqBands.toList()))
+        o.put("loudness_mb", Settings.loudnessMb)
         o.put("mic_recording", MicTest.recording)   // để UI biết bản ghi 30s tự dừng
 
         val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-        val cur = am.getStreamVolume(AudioManager.STREAM_MUSIC)
+        // While a speaker is connected the index that decides loudness is the Bluetooth one, not the
+        // one getStreamVolume answers with -- reporting the latter is how the panel came to show
+        // 100% over an output sitting at 6 of 15.
+        val btIndex = bt.outputVolumeIndex()
+        val cur = if (btIndex >= 0) btIndex else am.getStreamVolume(AudioManager.STREAM_MUSIC)
         o.put("volume", if (max > 0) Math.round(cur * 100f / max) else 0)
         // Lets the UI build a slider that can only express values the hardware can actually hold.
         o.put("volume_steps", max)
@@ -716,6 +745,42 @@ class ControlServer @Inject constructor(
             addHeader("Access-Control-Allow-Origin", "*")
             addHeader("Cache-Control", "no-store")
         }
+    }
+
+    /**
+     * Every Bluetooth call can fail for a reason worth reading -- three of them reach hidden
+     * framework methods by reflection, which misses only at runtime -- so the reason is carried to
+     * the panel instead of being logged where nobody looks.
+     */
+    private fun json(r: BtResult): Response = json(
+        JSONObject().put("ok", r.ok).put("error", r.error).toString()
+    )
+
+    private fun buildBtState(): String {
+        val st = bt.state()
+        val devices = JSONArray()
+        st.devices.forEach { d ->
+            devices.put(JSONObject().apply {
+                put("address", d.address)
+                put("name", d.name)
+                put("bonded", d.bonded)
+                // Carried rather than filtered on, so the panel's "show everything" toggle costs no
+                // round trip -- cheap speakers do misdeclare their class.
+                put("audio", d.audio)
+                put("connected", d.connected)
+                d.rssi?.let { put("rssi", it) }
+            })
+        }
+        return JSONObject().apply {
+            put("supported", st.supported)
+            put("enabled", st.enabled)
+            put("scanning", st.scanning)
+            put("auto_reconnect", st.autoReconnect)
+            put("connected", st.connectedAddress)
+            put("busy", st.busy)
+            put("error", st.error)
+            put("devices", devices)
+        }.toString()
     }
 
     private fun json(s: String): Response =
