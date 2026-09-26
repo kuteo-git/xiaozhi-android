@@ -126,6 +126,11 @@ object Settings {
         get() = prefs.getString("wake_engine", "alexa")!!
         set(v) = prefs.edit().putString("wake_engine", v).apply()
 
+    /** Playback channels (1 / 2). Applied on app restart; must match the server. */
+    var playbackChannels: Int
+        get() = prefs.getInt("playback_ch", AppConfig.PLAYBACK_CHANNELS)
+        set(v) = prefs.edit().putInt("playback_ch", if (v == 2) 2 else 1).apply()
+
     // ── Bluetooth audio out (Setup tab) ─────────────────────────────────────
     /** Address of the last speaker/headphones connected on purpose. "" = none remembered. */
     var btLastDevice: String

@@ -44,7 +44,13 @@ https://github.com/user-attachments/assets/1ee53869-1987-4e1f-a64a-26c7c0ec032f
 - **LED feedback** — the R1 LED ring lights up in different colors for listening / speaking / music,
   via the `msgcenter` system service.
 - **Boot start** — launches automatically on device boot.
-- **Music** — the server streams music (e.g. YouTube via a pytube service) back as normal audio.
+- **Music** — the server streams music (e.g. YouTube via a pytube service) back as normal audio, in
+  stereo at 48 kHz.
+- **Bluetooth audio out** — pair a speaker or headphones from the control panel and every sound the
+  box makes goes there instead: replies, music and the bulletin. Scan, pair, connect, disconnect,
+  forget, and an auto-reconnect that reaches for the last speaker at startup and when it comes back
+  on. Pressing disconnect suspends that until you connect again, so it does not reconnect behind
+  you. The R1's own speaker is silent while a Bluetooth one is connected.
 - **On-device web control panel** (port `8088`) — configure the server, wake engine, LLM and Home
   Assistant integration, run a live A/B mic test, follow the app's activity log and view chat
   history, all from a browser — no rebuild required. See [Control panel](#control-panel-port-8088) below.
@@ -181,6 +187,10 @@ rebuilding it. Open `http://<device-ip>:8088` from any browser on the same netwo
   - **+AGC** (`agc=1`): runs a separate `SttAgc` instance over a copy of the buffer using the
     currently configured target/max-gain, so you can preview far-field gain settings live, even
     while the app is idle. Produces a downloadable 16 kHz mono WAV (auto-stops after 30s).
+- **Bluetooth card (Setup tab)** — the adapter switch, a Quét button that runs one 12-second scan
+  per press, the device list (audio devices only unless you ask for all), and a Phát thử button.
+  One scan per press, because the AP6335 shares its radio with Wi-Fi and the panel itself arrives
+  over that Wi-Fi.
 - **LED control** — trigger LED states directly for testing.
 - **Chat log** — recent conversation turns with real timestamps (from when the message actually
   happened, not from when the browser polled for it).
@@ -215,6 +225,13 @@ rebuilding it. Open `http://<device-ip>:8088` from any browser on the same netwo
 | `/api/llm/test` | GET/POST | Test the configured LLM connection |
 | `/api/ha/devices` | GET/POST | Fetch/search Home Assistant devices |
 | `/api/ha/test` | GET | Test the Home Assistant connection |
+| `/api/bt/state` | GET | Adapter state, scan results and the connected speaker (polled only while the card is open) |
+| `/api/bt/enable?on=` | POST | Turn the Bluetooth adapter on or off |
+| `/api/bt/scan/start`, `/api/bt/scan/stop` | POST | Run or cancel one discovery |
+| `/api/bt/pair?addr=` | POST | Bond with a device, auto-answering its PIN prompt for 30 seconds |
+| `/api/bt/connect?addr=`, `/api/bt/disconnect?addr=` | POST | Route audio to a bonded device, or stop |
+| `/api/bt/forget?addr=` | POST | Remove the bond |
+| `/api/bt/auto?on=` | POST | Reconnect the last speaker automatically |
 | `/api/logs?since=<seq>` | GET | Activity-log entries newer than `seq` (incremental; the drawer polls only while open) |
 | `/api/logs/clear` | POST | Clear the in-memory activity log |
 | `/api/news/save` | POST | Save the whole Bản tin card (JSON body); re-arms the alarm and forwards the checklist to the server |
@@ -229,6 +246,17 @@ value `*_set` is present, and the panel masks them in the UI.
   it can be used to iterate on the UI without rebuilding the app — but if you forget to remove it
   after building a new APK, the control panel will keep showing the *old* UI even though the new
   one is bundled inside. Always `rm /sdcard/control.html` after a build that changes `control.html`.
+- **The audio format is not negotiated.** The server encodes from its own config and this client
+  decodes from `Settings`, so `playbackSampleRate` and `playbackChannels` have to match
+  `xiaozhi.audio_params` on the server. When they differ the frames are cut in the wrong places and
+  the audio comes out as noise. The panel shows the server's announced format beside the two
+  controls and warns in red when they differ, which is as far as it can go. Reaching that state
+  costs one tap, and both ends need a restart after the change.
+- **`volume` on a Bluetooth speaker is a different index from the one the slider used to move.**
+  The box keeps one volume index per output device, and on this ROM `getDeviceForStream` answers
+  SPDIF while the audio goes out over A2DP, so `setStreamVolume` wrote a number the speaker never
+  read and the panel showed 100% over an output sitting at 6 of 15. The app now writes the A2DP
+  index directly when a speaker connects and when it starts up with one already connected.
 - Settings changed via `/api/set` are **not clamped** server-side even if the corresponding slider in
   the UI has a max — a value outside the slider's range can still be set directly through the API.
 - **`volume` is quantized to the hardware's step count**, reported as `volume_steps` in `/api/state`
@@ -247,7 +275,8 @@ readable/writable through the control panel or its HTTP API.
 | Wake word | `wakeEngine`, `wakeSensitivity`, `wakeSensitivitySpeaking`, `maiOiThreshold`, `maiOiThresholdSpeaking` |
 | Mic / AGC | `micSource`, `micGain`, `agcEnabled`, `agcTarget`, `agcMaxGain` |
 | LED | `ledIdle`, `ledListening`, `ledSpeaking`, `ledMusic` |
-| Audio playback | `volume`, `eqEnabled`, `eqBands`, `playbackSampleRate` |
+| Audio playback | `volume`, `eqEnabled`, `eqBands`, `loudnessMb`, `playbackSampleRate`, `playbackChannels` |
+| Bluetooth out | `btLastDevice`, `btAutoReconnect` |
 | Server / transport | `otaUrl`, `wsUrl`, `wsToken` |
 | LLM | `llmProvider`, `llmBaseUrl`, `llmApiKey`, `llmModel`, `llmTransport` |
 | Home Assistant | `haUrl`, `haToken`, `haDevices` |

@@ -176,6 +176,7 @@ class ControlServer @Inject constructor(
             "led_speaking" -> Settings.ledSpeaking = v
             "led_music" -> Settings.ledMusic = v
             "playback_sr" -> v.toIntOrNull()?.let { Settings.playbackSampleRate = it }
+            "playback_ch" -> v.toIntOrNull()?.let { Settings.playbackChannels = it }
             "eq_enabled" -> { Settings.eqEnabled = v == "true"; playback.applyAudioSettings() }
             "eq_bands" -> {
                 Settings.eqBands = v.split(",").mapNotNull { it.trim().toIntOrNull() }.toIntArray()
@@ -243,6 +244,11 @@ class ControlServer @Inject constructor(
         o.put("led_speaking", Settings.ledSpeaking)
         o.put("led_music", Settings.ledMusic)
         o.put("playback_sr", Settings.playbackSampleRate)
+        o.put("playback_ch", Settings.playbackChannels)
+        // What the server said it would send, so the panel can show a mismatch rather than let
+        // somebody hear one. -1 until a hello has arrived -- see ServerAudioParams.
+        o.put("server_sr", info.dourok.voicebot.domain.voice.ServerAudioParams.sampleRate)
+        o.put("server_ch", info.dourok.voicebot.domain.voice.ServerAudioParams.channels)
         o.put("eq_enabled", Settings.eqEnabled)
         o.put("eq_bands", JSONArray(Settings.eqBands.toList()))
         o.put("loudness_mb", Settings.loudnessMb)

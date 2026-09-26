@@ -37,7 +37,8 @@ class OpusDecoder(
             opusData,
             opusData.size,
             pcmBuffer,
-            maxPcmSize
+            maxPcmSize,
+            channels,
         )
 
         if (decodedBytes > 0) {
@@ -69,7 +70,8 @@ class OpusDecoder(
         inputBuffer: ByteArray,
         inputSize: Int,
         outputBuffer: ByteArray,
-        maxOutputSize: Int
+        maxOutputSize: Int,
+        channels: Int,
     ): Int
 
     private external fun nativeReleaseDecoder(decoderHandle: Long)

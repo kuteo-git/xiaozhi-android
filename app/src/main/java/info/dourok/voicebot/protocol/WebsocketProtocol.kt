@@ -1,6 +1,7 @@
 package info.dourok.voicebot.protocol
 import android.util.Log
 import info.dourok.voicebot.domain.voice.AppLog
+import info.dourok.voicebot.domain.voice.ServerAudioParams
 import info.dourok.voicebot.data.model.DeviceInfo
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -122,8 +123,11 @@ class WebsocketProtocol(private val deviceInfo: DeviceInfo,
                     put("transport", "websocket")
                     put("audio_params", JSONObject().apply {
                         put("format", "opus")
-                        put("sample_rate", 16000)
-                        put("channels", 1)
+                        // What this client will actually decode. The server reads its OWN config for
+                        // the output format and ignores these, so the old hardcoded 16000/1 was a
+                        // claim nobody checked -- and a wrong one, measured at 48000 stereo.
+                        put("sample_rate", info.dourok.voicebot.data.Settings.playbackSampleRate)
+                        put("channels", info.dourok.voicebot.data.Settings.playbackChannels)
                         put("frame_duration", OPUS_FRAME_DURATION_MS)
                     })
                     // Per-session BYO LLM: send the client-configured provider so the server builds
@@ -238,12 +242,15 @@ class WebsocketProtocol(private val deviceInfo: DeviceInfo,
             return
         }
 
+        // What the server will actually encode. Kept rather than dropped: this used to be written
+        // into a private field nothing ever read, so the one fact that could catch a client/server
+        // format mismatch was being thrown away on every connection.
         val audioParams = root.optJSONObject("audio_params")
         audioParams?.let {
             val sampleRate = it.optInt("sample_rate", -1)
-            if (sampleRate != -1) {
-                serverSampleRate = sampleRate
-            }
+            if (sampleRate != -1) ServerAudioParams.sampleRate = sampleRate
+            val channels = it.optInt("channels", -1)
+            if (channels != -1) ServerAudioParams.channels = channels
         }
         sessionId = root.optString("session_id")
 
@@ -258,5 +265,4 @@ class WebsocketProtocol(private val deviceInfo: DeviceInfo,
         client.dispatcher.executorService.shutdown()
     }
 
-    private var serverSampleRate: Int = -1
 }

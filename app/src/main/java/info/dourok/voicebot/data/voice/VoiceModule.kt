@@ -34,7 +34,7 @@ object VoiceModule {
 
     @Provides
     @Singleton
-    fun provideAudioPlayback(): AudioPlayback = OpusAudioPlayback(Settings.playbackSampleRate)
+    fun provideAudioPlayback(): AudioPlayback = OpusAudioPlayback(Settings.playbackSampleRate, Settings.playbackChannels)
 
     @Provides
     @Singleton

@@ -32,7 +32,8 @@ Java_info_dourok_voicebot_OpusDecoder_nativeDecodeBytes(JNIEnv *env, jobject thi
                                                         jbyteArray input_buffer,
                                                         jint input_size,
                                                         jbyteArray output_buffer,
-                                                        jint max_output_size) {
+                                                        jint max_output_size,
+                                                        jint channels) {
     OpusDecoder *decoder = (OpusDecoder*)(intptr_t)decoder_handle;
     if (decoder == nullptr) {
         LOGE("Decoder handle is null");
@@ -42,7 +43,11 @@ Java_info_dourok_voicebot_OpusDecoder_nativeDecodeBytes(JNIEnv *env, jobject thi
     jbyte *input = env->GetByteArrayElements(input_buffer, nullptr);
     jbyte *output = env->GetByteArrayElements(output_buffer, nullptr);
 
-    int frame_size = max_output_size / 2; // 16-bit PCM
+    // opus_decode's frame_size is samples PER CHANNEL, and the buffer holds
+    // samples * channels * 2 bytes -- so dividing by 2 alone claimed twice the real capacity on a
+    // stereo stream. Wrong in the dangerous direction: it tells Opus it may write past the buffer.
+    if (channels < 1) channels = 1;
+    int frame_size = max_output_size / (2 * channels);
     int result = opus_decode(decoder, (unsigned char*)input, input_size,
                              (opus_int16*)output, frame_size, 0);
 
@@ -54,7 +59,10 @@ Java_info_dourok_voicebot_OpusDecoder_nativeDecodeBytes(JNIEnv *env, jobject thi
         return -1;
     }
 
-    return result * 2; // 返回字节数（每个样本2字节）
+    // result is samples per channel; the caller wants bytes. Without the channel term every stereo
+    // frame came back half its real length, which is not a small error -- the player would be handed
+    // half a frame of interleaved audio for ever and nothing would report it.
+    return result * channels * 2;
 }
 
 JNIEXPORT void JNICALL

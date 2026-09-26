@@ -232,6 +232,74 @@ Máy **có** Bluetooth và có cả hai chiều: chip **AP6335** trên UART `/de
   nên mỗi lần nói một câu khác, và bậc thang đo ra **không đơn điệu** (vol=0 → −39.4 dBFS, vol=50 →
   −42.8, vol=100 → −27.3). Muốn đo mức thì phải phát cùng một file mỗi lần.
 
+### Audio stereo đầu-cuối, và trần thật nằm ở đâu (26/09/2026)
+
+Báo cáo ban đầu là "nhạc nghe kém, hình như bị nén". Đo lại toàn chuỗi thì **transport chưa bao
+giờ là trần** — nhạc bị **trộn xuống mono trên server** trước cả khi vào Opus.
+
+- **Nguồn không phải vấn đề.** Hỏi thẳng VieNeu-TTS (`POST :8002/v1/audio/speech`): trả về
+  **48 kHz mono**, và có nội dung thật tới 20 kHz (500 Hz 0 dB · 4k −37 · 9k −47 · 15k −48 ·
+  20k −56). Encoder Opus của server lúc đó đã là **96 kbps, complexity 10, APPLICATION_AUDIO**.
+- **Đếm byte trên dây mới là thước.** `/proc/net/dev` của R1 trong lúc phát nhạc, và bậc thang:
+
+  | | wire | payload |
+  |---|---|---|
+  | mono 96k | 13.7 kB/s | 110 kbps |
+  | stereo 120k | 16.5 kB/s | 132 kbps |
+  | stereo 160k | 21.6 kB/s | 173 kbps |
+
+  Frame 60 ms ở 96k là **719 byte** (đo bằng chính `opuslib_next` của server); nếu còn ở 24k thì
+  chỉ ~165 byte → ~3.7 kB/s, tức thấp hơn 3.7 lần.
+- **Server: số kênh do chính encoder quyết.** `audio_to_data_stream`
+  và `audio_bytes_to_data_stream` hỏi `opus_encoder.channels`; encoder được dựng một lần từ
+  `conn.channels`, đọc từ `xiaozhi.audio_params` như `sample_rate`. Trước đó `set_channels(1)` nằm
+  rải rác. Và `pcm_to_data_stream` dùng stride `frame_size * 2`, đúng cho mono và **cắt đôi mọi
+  frame stereo**.
+- **JNI decoder của app vốn chỉ đúng cho mono**, và đây là loại vỡ im lặng:
+  `frame_size = max_output_size / 2` trong khi `opus_decode` muốn **sample MỖI KÊNH** (stereo được
+  khai gấp đôi dung lượng thật, sai về phía nguy hiểm), và `return result * 2` thiếu số kênh nên
+  mỗi frame stereo trả về **nửa độ dài**. Cả hai đã sửa, `channels` truyền từ Kotlin xuống.
+- **`frame_duration` mới là thứ chặn bitrate, không phải ý muốn.** Trần một gói Opus là **1275
+  byte**; đo với frame 60 ms stereo: 120k → 899 B, **160k → 1199 B**, 170k → 1274 B, 200k → 1499 B.
+  Nên 160k là mức cao nhất còn chỗ thở; muốn cao hơn phải **rút `frame_size_ms` xuống**.
+- **Ba lần nâng bitrate khác loại nhau**: 24k→96k mua **trần
+  tần số** (Opus tự cắt ngọn ở bitrate thấp); 96k mono→120k stereo mua lại **một kênh bị vứt**;
+  120k→160k chỉ mua **độ mịn**, thứ phải ABX mới nghe ra, và nó nằm **trước** chặng SBC.
+- **Cái không sửa được từ đây**: stack Bluetooth là **SBC only**, và module a2dp chỉ khai 44100
+  trong khi app phát 48000 → resample mọi frame mà **đổi `playback_sr` không tránh được**, vì Opus
+  không định nghĩa 44.1 kHz.
+
+### Client và server không thương lượng được định dạng, nên panel phải nói ra
+
+Server mã hoá theo config của nó, app giải mã theo `Settings`. Lệch nhau thì **tiếng bị chia khung
+sai và nghe ra rác**, chứ nó không suy giảm dần. Panel lại cho đổi Mono/Stereo và 24/48 kHz bằng
+hai cú chạm, nên trạng thái hỏng chỉ cách một lần bấm.
+
+- `ServerAudioParams` giữ những gì server khai trong hello và đẩy ra `/api/state` thành
+  `server_sr` / `server_ch`; panel hiện cảnh báo đỏ ngay cạnh hai hàng đó khi lệch. Plain object
+  theo khuôn `VoiceDebugState`, vì ControlServer không giữ tham chiếu tới protocol.
+- Nó thay một **field chết**: `serverSampleRate` trước đây được ghi vào mỗi lần hello rồi **không
+  ai đọc**, tức đúng một dữ kiện có thể bắt được lỗi này đang bị vứt đi.
+- **`-1` là trạng thái thứ ba, không phải mono.** Máy vừa khởi động chưa được phép kết tội server
+  là lệch khi server chưa nói gì.
+- **Proven to fail**: đặt Mono → hiện; đặt thêm 24 kHz → hiện; trả về 48000/2 → ẩn.
+- `data/.config.yaml` bị gitignore (có key + token), nên số kênh của server **sống ngoài git**:
+  khôi phục config từ backup có thể cho server mono trong khi app stereo, và cảnh báo trên là thứ
+  bắt được trường hợp đó.
+
+### adb rớt giữa một lần push để lại adbd chết mà cổng vẫn "open"
+
+Một lần `adb push` 15 MB bị đứt (`failed to read copy response: EOF`) làm **adbd trên R1 treo**:
+`nc -z 5555` vẫn báo open, `adb connect` báo `device offline`, và một gói CNXN tự dựng gửi qua `nc`
+**không nhận lại byte nào**. Đổi cổng relay, restart adb server, `kill-server` — không cái nào ăn
+thua, vì lỗi nằm ở máy chứ không ở Mac.
+
+Chữa bằng shell 8080: **`setprop ctl.restart adbd`** (pid 214 → 13669). `init.svc.adbd` báo
+`running` suốt cả lúc treo lẫn sau khi chữa, nên đừng dùng nó để chẩn đoán. Shell 8080 là uid=system
+còn adbd chạy uid=shell nên **không kill trực tiếp được**, và khi adb chết thì 8080 là đường duy
+nhất còn lại.
+
+
 ## Suggestions
 - Commit trên `main`, đừng để lẫn `.idea/*` (đang bị track — cân nhắc gitignore).
 - Muốn nghe hiệu ứng gain bằng tai: dùng nút **+AGC** trong Test mic, chỉnh slider rồi ghi lại.

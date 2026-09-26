@@ -18,6 +18,14 @@ object AppConfig {
     const val PLAYBACK_SAMPLE_RATE = 48000
 
     /**
+     * Playback channels (1 = mono, 2 = stereo). Must match the server's
+     * xiaozhi.audio_params.channels: the two ends cannot negotiate it, so a mismatch is not a
+     * quality loss but mis-framed audio. Stereo since 26/09/2026 -- music was downmixed to mono on
+     * the server before Opus saw it, and no bitrate buys the other channel back.
+     */
+    const val PLAYBACK_CHANNELS = 2
+
+    /**
      * Snowboy "Alexa" sensitivity while idle, 0..1 (higher = easier to trigger).
      * 2026-06-28: 0.8 -> 0.5 — 0.8 + boost gain 3x làm TV/tiếng ồn tự kích wake. Gain không cải
      * thiện SNR (khuếch đại cả giọng lẫn ồn) nên hạ gain + hạ sensitivity. Far Alexa khó thì
