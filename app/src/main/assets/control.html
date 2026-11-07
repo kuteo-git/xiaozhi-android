@@ -662,11 +662,11 @@ select:active,select:focus{box-shadow:0 0 0 4px var(--grad-dim);}
 
     <div class="card">
       <div class="ch"><span class="icon-badge ib-bt"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polyline points="5.4 5.4 14.6 14.6 10 19.2 10 0.8 14.6 5.4 5.4 14.6"/></svg></span><h2>Bluetooth</h2><label class="sw"><input type="checkbox" id="btOn" onchange="btEnable(this.checked)" aria-label="Bật/tắt Bluetooth"><span></span></label></div>
-      <div class="row" style="gap:8px"><button class="btn rec" style="flex:1;width:auto" id="btScanBtn" onclick="btScan()">Quét</button><button class="btn rec" style="flex:1;width:auto" onclick="btSay()">Phát thử</button></div>
+      <div class="row" style="gap:8px"><button class="btn rec" style="flex:1;width:auto" id="btScanBtn" onclick="btScan()">Quét</button><button class="btn rec" style="flex:1;width:auto" onclick="btSay()">Phát thử</button><button class="btn rec" style="flex:1;width:auto" id="btRecvBtn" onclick="btReceive()">Nhận nhạc từ điện thoại</button></div>
       <div class="row"><label>Tự nối lại</label><label class="sw sw-sm"><input type="checkbox" id="btAuto" onchange="btAutoSet(this.checked)" aria-label="Tự nối lại thiết bị cuối"><span></span></label></div>
       <div class="row"><label>Hiện tất cả</label><label class="sw sw-sm"><input type="checkbox" id="btAll" onchange="btRender()" aria-label="Hiện cả thiết bị không phải loa"><span></span></label></div>
       <div id="btList"></div>
-      <div class="hint" id="btStat">Ghép đôi một loa hoặc tai nghe để phát tiếng ra đó.<details><summary>Chi tiết</summary><p>Nối rồi thì <b>mọi</b> tiếng của máy đi ra thiết bị đó — câu trả lời, nhạc và bản tin — còn loa trong máy im. Quét chạy 12 giây một lần bấm chứ không chạy liên tục, vì Bluetooth và wifi dùng chung radio và panel này đi qua wifi. Equalizer vẫn giữ nguyên curve, nhưng curve đó đo cho loa của máy nên nên tắt hoặc chỉnh lại khi nghe qua loa khác.</p></details></div>
+      <div class="hint" id="btStat">Ghép đôi một loa hoặc tai nghe để phát tiếng ra đó.<details><summary>Chi tiết</summary><p>Nối rồi thì <b>mọi</b> tiếng của máy đi ra thiết bị đó — câu trả lời, nhạc và bản tin — còn loa trong máy im. Quét chạy 12 giây một lần bấm chứ không chạy liên tục, vì Bluetooth và wifi dùng chung radio và panel này đi qua wifi. Equalizer vẫn giữ nguyên curve, nhưng curve đó đo cho loa của máy nên nên tắt hoặc chỉnh lại khi nghe qua loa khác.</p><p><b>Nhận nhạc từ điện thoại</b> mở máy cho điện thoại tìm thấy trong 2 phút; điện thoại ghép đôi xong thì cửa đóng, rồi điện thoại tự nối và phát vào loa máy. Chưa đo trên máy thật.</p></details></div>
     </div>
 
     <div class="card">
@@ -1336,8 +1336,9 @@ function editHaLine(i,v){const l=_haLines();l[i]=v.trim();_saveHaLines(l);}
 function removeHaLine(i){const l=_haLines();l.splice(i,1);_saveHaLines(l);}
 
 // ── Bluetooth (A2DP source: this box plays OUT through a speaker/headphones) ─────────
-// The opposite direction -- a phone streaming into the R1 -- is the platform's own A2dpSinkService
-// and is deliberately not driven from here.
+// The opposite direction -- a phone streaming into the R1 -- is played by the platform's own
+// A2dpSinkService. All this card does for it is open the door ("Nhận nhạc từ điện thoại": visible
+// for 2 minutes, one pairing request answered) and show who is streaming in.
 let btPollTimer=null,btState=null,btErr='';
 // elapsedRealtime is the device's; here Date.now() is fine because this only suppresses a
 // write-back for a few seconds. Enabling the adapter takes seconds to report back, and a switch
@@ -1360,6 +1361,7 @@ async function btCall(url){
 function btEnable(on){btEnableWanted=on;btEnablePendingUntil=Date.now()+BT_ENABLE_GRACE_MS;btCall('/api/bt/enable?on='+(on?1:0));}
 function btAutoSet(on){btCall('/api/bt/auto?on='+(on?1:0));}
 function btScan(){btErr='';btCall('/api/bt/scan/start');}
+function btReceive(){btErr='';btCall('/api/bt/receive');}
 function btPair(a){btCall('/api/bt/pair?addr='+encodeURIComponent(a));}
 function btConnect(a){btCall('/api/bt/connect?addr='+encodeURIComponent(a));}
 function btDisconnect(a){btCall('/api/bt/disconnect?addr='+encodeURIComponent(a));}
@@ -1371,17 +1373,18 @@ function btSay(){fetch('/api/say?text='+encodeURIComponent('nói thử một câ
 
 function btRow(d){
   const label=d.name||d.address;
-  const sub=[d.address,d.rssi!=null?d.rssi+' dBm':'',d.bonded?'đã ghép đôi':''].filter(Boolean).join(' · ');
+  const sub=[d.address,d.rssi!=null?d.rssi+' dBm':'',d.bonded?'đã ghép đôi':'',d.streaming_in?'đang phát vào máy':''].filter(Boolean).join(' · ');
+  // A phone is a source, not an output: "Nối" would ask the A2DP source side to play into it.
   const act=d.connected
     ? `<button class="tbtn" onclick="btDisconnect('${d.address}')" aria-label="Ngắt">Ngắt</button>`
     : (d.bonded
-        ? `<button class="tbtn" onclick="btConnect('${d.address}')" aria-label="Nối">Nối</button>`
+        ? (d.phone?'':`<button class="tbtn" onclick="btConnect('${d.address}')" aria-label="Nối">Nối</button>`)
         : `<button class="tbtn" onclick="btPair('${d.address}')" aria-label="Ghép đôi">Ghép</button>`);
   const forget=d.bonded
     ? `<button class="tbtn" onclick="btForget('${d.address}','${label.replace(/'/g,'')}')" aria-label="Xoá ghép đôi">Xoá</button>`
     : '';
   return `<div class="row" style="margin:6px 0;gap:6px;align-items:center">
-    ${d.connected?'<span class="bt-dot"></span>':''}
+    ${d.connected||d.streaming_in?'<span class="bt-dot"></span>':''}
     <div class="li-info"><div class="li-title">${label}</div><div class="li-sub">${sub}</div></div>
     ${act}${forget}</div>`;
 }
@@ -1395,6 +1398,9 @@ function btRender(){
   const scanning=!!s.scanning;
   $('btScanBtn').textContent=scanning?'Đang quét…':'Quét';
   $('btScanBtn').disabled=scanning||!s.enabled;
+  const recv=s.receive_seconds_left|0;
+  $('btRecvBtn').textContent=recv>0?'Đang chờ… '+recv+'s':'Nhận nhạc từ điện thoại';
+  $('btRecvBtn').disabled=recv>0||!s.enabled;
   if(!s.supported){$('btList').innerHTML='';$('btStat').textContent='Máy này không có Bluetooth.';return;}
   if(!s.enabled){$('btList').innerHTML='';$('btStat').textContent='Bluetooth đang tắt — bật công tắc ở trên.';return;}
   // The filter is here, not on the server: the list already carries `audio` per device, so changing
@@ -1406,11 +1412,18 @@ function btRender(){
     ||(scanning?'<div class="hint">(đang tìm…)</div>':'<div class="hint">(chưa thấy thiết bị nào — bấm Quét)</div>');
   const conn=(s.devices||[]).find(d=>d.connected);
   const err=btErr||s.error||'';
-  $('btStat').textContent=err?('✗ '+err)
+  const inc=(s.devices||[]).find(d=>d.streaming_in);
+  // A phone that bonded earlier cannot find a box that is not connectable, and only this button
+  // makes it so; shown as the plain state of things, not as a promise about what the phone does.
+  const closed=s.scan_mode==='none'?' Điện thoại đã ghép đôi chưa nối lại được cho tới khi bấm “Nhận nhạc từ điện thoại” lần nữa.':'';
+  const html=err?('✗ '+esc(err))
     :s.busy==='pairing'?'Đang ghép đôi…'
     :s.busy==='connecting'?'Đang nối…'
-    :conn?('Đang phát qua '+(conn.name||conn.address)+' — loa trong máy im.')
-    :'Chưa nối thiết bị nào, tiếng ra loa trong máy.';
+    :recv>0?('Điện thoại tìm tên <b>'+esc(s.adapter_name||'Phicomm_R1')+'</b>… còn '+recv+' giây')
+    :inc?('Đang nhận nhạc từ '+esc(inc.name||inc.address)+(s.incoming_tuned?' · đã áp EQ và loudness':' · chưa áp được EQ')+closed)
+    :conn?('Đang phát qua '+esc(conn.name||conn.address)+' — loa trong máy im.'+closed)
+    :'Chưa nối thiết bị nào, tiếng ra loa trong máy.'+closed;
+  $('btStat').innerHTML=html;
 }
 
 // ── Media Player ──────────────────────────────────

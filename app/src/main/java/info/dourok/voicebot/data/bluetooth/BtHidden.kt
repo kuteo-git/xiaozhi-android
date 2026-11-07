@@ -1,7 +1,9 @@
 package info.dourok.voicebot.data.bluetooth
 
 import android.bluetooth.BluetoothA2dp
+import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothProfile
 import android.media.AudioManager
 import android.util.Log
 import info.dourok.voicebot.domain.bluetooth.BtResult
@@ -27,6 +29,37 @@ object BtHidden {
 
     fun disconnect(proxy: BluetoothA2dp, device: BluetoothDevice): BtResult =
         invokeWithDevice(proxy, device, "disconnect", "BluetoothA2dp.disconnect(BluetoothDevice)")
+
+    /**
+     * `BluetoothAdapter.setScanMode(int mode, int durationSec)`. The public API has none: the
+     * platform's "make discoverable" is an Activity with a dialog, and this box has no screen.
+     * [durationSec] only matters for DISCOVERABLE; the stack falls back to CONNECTABLE afterwards.
+     */
+    fun setScanMode(adapter: BluetoothAdapter, mode: Int, durationSec: Int): BtResult = try {
+        val m = adapter.javaClass.getMethod(
+            "setScanMode", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType,
+        )
+        val ok = m.invoke(adapter, mode, durationSec) as? Boolean ?: false
+        if (ok) BtResult.OK else BtResult.fail("BluetoothAdapter.setScanMode(int,int) trả về false")
+    } catch (e: NoSuchMethodException) {
+        Log.e(TAG, "BluetoothAdapter.setScanMode(int,int) missing on this ROM", e)
+        BtResult.fail("ROM này không có BluetoothAdapter.setScanMode(int,int)")
+    } catch (e: Exception) {
+        Log.e(TAG, "BluetoothAdapter.setScanMode(int,int) failed", e)
+        BtResult.fail("BluetoothAdapter.setScanMode(int,int) lỗi: ${e.message}")
+    }
+
+    /**
+     * `BluetoothProfile.A2DP_SINK`, a hidden constant read from the class rather than copied: its
+     * value differs between Android versions, and a hardcoded number would bind some other profile
+     * without any error. Null when this ROM does not have it.
+     */
+    fun a2dpSinkProfileId(): Int? = try {
+        BluetoothProfile::class.java.getField("A2DP_SINK").getInt(null)
+    } catch (e: Exception) {
+        Log.e(TAG, "BluetoothProfile.A2DP_SINK missing on this ROM: ${e.message}")
+        null
+    }
 
     /**
      * Force the volume index Android applies to the A2DP output.

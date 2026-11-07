@@ -51,6 +51,10 @@ https://github.com/user-attachments/assets/1ee53869-1987-4e1f-a64a-26c7c0ec032f
   forget, and an auto-reconnect that reaches for the last speaker at startup and when it comes back
   on. Pressing disconnect suspends that until you connect again, so it does not reconnect behind
   you. The R1's own speaker is silent while a Bluetooth one is connected.
+- **Bluetooth audio in** — press "Nhận nhạc từ điện thoại" and a phone can find the R1 for two minutes,
+  pair with it, and play music into its speaker. The ROM's own A2DP sink plays the stream; the app only
+  makes the box discoverable, answers that one pairing request inside the window, and shows who is
+  streaming in. *Not yet tested on the device.*
 - **On-device web control panel** (port `8088`) — configure the server, wake engine, LLM and Home
   Assistant integration, run a live A/B mic test, follow the app's activity log and view chat
   history, all from a browser — no rebuild required. See [Control panel](#control-panel-port-8088) below.
@@ -190,7 +194,7 @@ rebuilding it. Open `http://<device-ip>:8088` from any browser on the same netwo
 - **Bluetooth card (Setup tab)** — the adapter switch, a Quét button that runs one 12-second scan
   per press, the device list (audio devices only unless you ask for all), and a Phát thử button.
   One scan per press, because the AP6335 shares its radio with Wi-Fi and the panel itself arrives
-  over that Wi-Fi.
+  over that Wi-Fi. A "Nhận nhạc từ điện thoại" button opens the box to a phone for two minutes.
 - **LED control** — trigger LED states directly for testing.
 - **Chat log** — recent conversation turns with real timestamps (from when the message actually
   happened, not from when the browser polled for it).
@@ -230,6 +234,7 @@ rebuilding it. Open `http://<device-ip>:8088` from any browser on the same netwo
 | `/api/bt/scan/start`, `/api/bt/scan/stop` | POST | Run or cancel one discovery |
 | `/api/bt/pair?addr=` | POST | Bond with a device, auto-answering its PIN prompt for 30 seconds |
 | `/api/bt/connect?addr=`, `/api/bt/disconnect?addr=` | POST | Route audio to a bonded device, or stop |
+| `/api/bt/receive` | POST | Make the R1 discoverable for 120 seconds and accept one phone's pairing request (phone plays into the R1; untested on the device) |
 | `/api/bt/forget?addr=` | POST | Remove the bond |
 | `/api/bt/auto?on=` | POST | Reconnect the last speaker automatically |
 | `/api/logs?since=<seq>` | GET | Activity-log entries newer than `seq` (incremental; the drawer polls only while open) |

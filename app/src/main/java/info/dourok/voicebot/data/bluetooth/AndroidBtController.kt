@@ -17,9 +17,12 @@ import info.dourok.voicebot.data.Settings
 import info.dourok.voicebot.domain.bluetooth.BtController
 import info.dourok.voicebot.domain.bluetooth.BtDevice
 import info.dourok.voicebot.domain.bluetooth.BtResult
+import info.dourok.voicebot.domain.bluetooth.BtScanMode
 import info.dourok.voicebot.domain.bluetooth.BtState
+import info.dourok.voicebot.domain.bluetooth.PAIRING_WINDOW_MS
+import info.dourok.voicebot.domain.bluetooth.PairingWindow
+import info.dourok.voicebot.domain.bluetooth.RECEIVE_WINDOW_MS
 import info.dourok.voicebot.domain.bluetooth.orderForPanel
-import info.dourok.voicebot.domain.bluetooth.pairingAutoAccept
 import info.dourok.voicebot.domain.bluetooth.reconnectTarget
 import info.dourok.voicebot.domain.voice.AppLog
 import java.util.concurrent.ConcurrentHashMap
@@ -28,6 +31,11 @@ import java.util.concurrent.ConcurrentHashMap
  * A2DP **source** on the R1: pair with a speaker or headphones and let the platform route
  * STREAM_MUSIC out to it, which is every sound this app makes — TTS, music and the bulletin all
  * go through one AudioTrack on that stream.
+ *
+ * The other direction (a phone playing into the R1, A2DP **sink**) is played by the ROM's own
+ * A2dpSinkService. All this class does for it is open the door: [receiveFromPhone] makes the
+ * adapter discoverable and answers the phone's pairing request inside a short window. It also
+ * reads the sink connection so the panel can say who is streaming in.
  *
  * Measured on the device before this was written: the adapter is a Broadcom AP6335 on /dev/ttyS1,
  * already enabled, and `A2dpService` plus `AvrcpControllerService` are running. `audio_policy.conf`
@@ -39,16 +47,20 @@ class AndroidBtController(private val context: Context) : BtController {
         (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
 
     private var a2dp: BluetoothA2dp? = null
+
+    /** The A2DP sink proxy, held as the public interface: only getConnectedDevices() is read. */
+    private var sink: BluetoothProfile? = null
     private var started = false
 
     /** What the last scan saw, by address. Cleared when a new scan starts. */
     private val found = ConcurrentHashMap<String, BtDevice>()
 
     /**
-     * elapsedRealtime of the last Pair press — the clock this window is measured against, because
-     * the wall clock jumps when NTP lands after boot.
+     * The span in which a pairing request is answered unattended, opened by a Pair press or by
+     * "receive from phone". One field, so opening it is one write. Measured on elapsedRealtime
+     * because the wall clock jumps when NTP lands after boot.
      */
-    @Volatile private var pairWindowOpenedAt = 0L
+    @Volatile private var window = PairingWindow.CLOSED
 
     /** Address we are bonding, so a successful bond can connect without a second press. */
     @Volatile private var pairing = ""
@@ -64,6 +76,8 @@ class AndroidBtController(private val context: Context) : BtController {
      */
     @Volatile private var busyUntil = 0L
     @Volatile private var error = ""
+
+    private val sinkEffects = SinkEffects()
 
     override fun start() {
         if (started) return
@@ -82,23 +96,37 @@ class AndroidBtController(private val context: Context) : BtController {
             Settings.btLastDevice = ""
         }
         bindA2dp()
+        bindSink()
     }
 
     // ── state ────────────────────────────────────────────────────────────────
 
     override fun state(): BtState {
         val connected = connectedAddress()
-        val bonded = bondedDevices().map { it.toBt(connected, rssi = null) }
+        val incoming = incomingDevice()
+        val incomingAddr = incoming?.address ?: ""
+        val bonded = bondedDevices().map { it.toBt(connected, incomingAddr, rssi = null) }
         val bondedAddrs = bonded.map { it.address }.toSet()
         val scanned = found.values.filter { it.address !in bondedAddrs }
-            .map { it.copy(connected = it.address == connected) }
+            .map { it.copy(connected = it.address == connected, streamingIn = it.address == incomingAddr) }
+        // A phone streaming in is bonded in practice; this only keeps it on screen if the bond list
+        // and the sink connection ever disagree.
+        val streamer = incoming?.takeIf { it.address !in bondedAddrs && found[it.address] == null }
+            ?.let { listOf(it.toBt(connected, incomingAddr, rssi = null)) } ?: emptyList()
+        val now = SystemClock.elapsedRealtime()
+        val w = window
         return BtState(
             supported = adapter != null,
             enabled = adapter?.isEnabled == true,
             scanning = adapter?.isDiscovering == true,
             autoReconnect = Settings.btAutoReconnect,
-            devices = orderForPanel(bonded + scanned),
+            adapterName = try { adapter?.name ?: "" } catch (e: Exception) { "" },
+            scanMode = scanMode(),
+            receiveSecondsLeft = if (w.forReceive) w.secondsLeft(now) else 0,
+            devices = orderForPanel(bonded + scanned + streamer),
             connectedAddress = connected,
+            incomingAddress = incomingAddr,
+            incomingTuned = sinkEffects.tunedSession() != null,
             busy = if (busy.isNotEmpty() && SystemClock.elapsedRealtime() > busyUntil) "" else busy,
             error = error,
         )
@@ -112,14 +140,33 @@ class AndroidBtController(private val context: Context) : BtController {
         try { a2dp?.connectedDevices?.firstOrNull()?.address ?: "" }
         catch (e: Exception) { Log.e(TAG, "connectedDevices: ${e.message}"); "" }
 
-    private fun BluetoothDevice.toBt(connected: String, rssi: Int?) = BtDevice(
-        address = address,
-        name = name ?: "",
-        bonded = bondState == BluetoothDevice.BOND_BONDED,
-        audio = bluetoothClass?.majorDeviceClass == BluetoothClass.Device.Major.AUDIO_VIDEO,
-        connected = address == connected,
-        rssi = rssi,
-    )
+    /** Read live, not cached: the sink connection lives in the stack and outlasts this app. */
+    private fun incomingDevice(): BluetoothDevice? =
+        try { sink?.connectedDevices?.firstOrNull() }
+        catch (e: Exception) { Log.e(TAG, "sink connectedDevices: ${e.message}"); null }
+
+    private fun scanMode(): BtScanMode = try {
+        when (adapter?.scanMode) {
+            BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE -> BtScanMode.DISCOVERABLE
+            BluetoothAdapter.SCAN_MODE_CONNECTABLE -> BtScanMode.CONNECTABLE
+            else -> BtScanMode.NONE
+        }
+    } catch (e: Exception) { Log.e(TAG, "getScanMode: ${e.message}"); BtScanMode.NONE }
+
+    private fun BluetoothDevice.toBt(connected: String, incoming: String, rssi: Int?): BtDevice {
+        val major = bluetoothClass?.majorDeviceClass
+        return BtDevice(
+            address = address,
+            name = name ?: "",
+            bonded = bondState == BluetoothDevice.BOND_BONDED,
+            audio = major == BluetoothClass.Device.Major.AUDIO_VIDEO,
+            connected = address == connected,
+            rssi = rssi,
+            streamingIn = address == incoming,
+            phone = major == BluetoothClass.Device.Major.PHONE ||
+                major == BluetoothClass.Device.Major.COMPUTER,
+        )
+    }
 
     // ── adapter / scan ───────────────────────────────────────────────────────
 
@@ -167,7 +214,7 @@ class AndroidBtController(private val context: Context) : BtController {
         // classic way to make bonding work only sometimes.
         stopScan()
         if (device.bondState == BluetoothDevice.BOND_BONDED) return connect(address)
-        pairWindowOpenedAt = SystemClock.elapsedRealtime()
+        window = PairingWindow(SystemClock.elapsedRealtime(), PAIRING_WINDOW_MS)
         pairing = address
         busy = "pairing"
         busyUntil = SystemClock.elapsedRealtime() + BUSY_TIMEOUT_MS
@@ -180,6 +227,25 @@ class AndroidBtController(private val context: Context) : BtController {
             busy = ""
             BtResult.fail("Ghép đôi lỗi: ${e.message}")
         }
+    }
+
+    override fun receiveFromPhone(): BtResult {
+        val a = adapter ?: return BtResult.fail("Máy không có Bluetooth")
+        if (!a.isEnabled) return BtResult.fail("Bluetooth đang tắt")
+        // Same reason as pair(): a radio hopping through a discovery answers pages badly.
+        stopScan()
+        error = ""
+        window = PairingWindow(SystemClock.elapsedRealtime(), RECEIVE_WINDOW_MS, forReceive = true)
+        val r = BtHidden.setScanMode(
+            a, BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE, (RECEIVE_WINDOW_MS / 1000L).toInt(),
+        )
+        AppLog.i("Bluetooth: mở cho điện thoại tìm (${a.name}) -> ${if (r.ok) "ok" else r.error}")
+        if (!r.ok) {
+            // A window nobody can find the box through only leaves the door unlatched.
+            window = PairingWindow.CLOSED
+            error = r.error
+        }
+        return r
     }
 
     override fun connect(address: String): BtResult {
@@ -248,6 +314,8 @@ class AndroidBtController(private val context: Context) : BtController {
     override fun outputVolumeIndex(): Int =
         if (connectedAddress().isEmpty()) -1 else BtHidden.a2dpMusicVolumeIndex()
 
+    override fun retune() = sinkEffects.retune()
+
     /**
      * Push whatever the panel is showing onto the speaker the moment it connects, so it does not
      * start at the fallback index nobody chose. Measured: without this the A2DP output sits at 6 of
@@ -315,6 +383,30 @@ class AndroidBtController(private val context: Context) : BtController {
         }
     }
 
+    private fun bindSink() {
+        val a = adapter ?: return
+        val sinkId = BtHidden.a2dpSinkProfileId() ?: return
+        try {
+            val queued = a.getProfileProxy(context, object : BluetoothProfile.ServiceListener {
+                override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
+                    if (profile != sinkId) return
+                    sink = proxy
+                    AppLog.i("Bluetooth: A2DP sink profile sẵn sàng")
+                    // The stream can already be playing across an app restart, and then no
+                    // broadcast ever arrives to say so.
+                    sinkEffects.reconcile(incomingDevice() != null)
+                }
+
+                override fun onServiceDisconnected(profile: Int) {
+                    if (profile == sinkId) sink = null
+                }
+            }, sinkId)
+            if (!queued) Log.e(TAG, "getProfileProxy(A2DP_SINK=$sinkId) refused")
+        } catch (e: Exception) {
+            Log.e(TAG, "getProfileProxy sink: ${e.message}")
+        }
+    }
+
     private fun register() {
         val main = IntentFilter().apply {
             addAction(BluetoothDevice.ACTION_FOUND)
@@ -325,6 +417,8 @@ class AndroidBtController(private val context: Context) : BtController {
             addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED)
             addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
             addAction(BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED)
+            addAction(ACTION_SINK_PLAYING_STATE_CHANGED)
+            addAction(ACTION_SINK_CONNECTION_STATE_CHANGED)
         }
         context.registerReceiver(receiver, main)
 
@@ -344,6 +438,7 @@ class AndroidBtController(private val context: Context) : BtController {
                     val rssi = intent.getShortExtra(BluetoothDevice.EXTRA_RSSI, Short.MIN_VALUE)
                     found[it.address] = it.toBt(
                         connected = "",
+                        incoming = "",
                         rssi = if (rssi == Short.MIN_VALUE) null else rssi.toInt(),
                     )
                 }
@@ -361,6 +456,16 @@ class AndroidBtController(private val context: Context) : BtController {
                         // Pairing a speaker then having to press Connect is a second press for
                         // one intent.
                         if (pairing == it.address) { pairing = ""; connect(it.address) }
+                        else if (window.let { w -> w.forReceive && w.accepts(SystemClock.elapsedRealtime()) }) {
+                            // The phone is in; leaving the box discoverable after that only
+                            // invites the next one. It is not connected as a source here: it
+                            // plays into us, we do not play into it.
+                            AppLog.i("Bluetooth: ${it.name ?: it.address} đã ghép đôi để phát vào máy, đóng cửa")
+                            window = PairingWindow.CLOSED
+                            adapter?.let { a ->
+                                BtHidden.setScanMode(a, BluetoothAdapter.SCAN_MODE_CONNECTABLE, 0)
+                            }
+                        }
                     } else if (bond == BluetoothDevice.BOND_NONE && pairing == it.address) {
                         pairing = ""
                         busy = ""
@@ -386,6 +491,9 @@ class AndroidBtController(private val context: Context) : BtController {
                     }
                 }
 
+                ACTION_SINK_PLAYING_STATE_CHANGED, ACTION_SINK_CONNECTION_STATE_CHANGED ->
+                    sinkEffects.reconcile(incomingDevice() != null)
+
                 BluetoothDevice.ACTION_ACL_CONNECTED -> device?.let {
                     // Speakers commonly reach back to their last source on power-up; the ACL link
                     // arrives first and A2DP does not always follow on its own.
@@ -396,10 +504,12 @@ class AndroidBtController(private val context: Context) : BtController {
                     val st = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1)
                     if (st == BluetoothAdapter.STATE_ON) {
                         bindA2dp()
+                        bindSink()
                         tryReconnect("adapter on")
                     } else if (st == BluetoothAdapter.STATE_OFF) {
                         found.clear()
                         busy = ""
+                        sinkEffects.reconcile(false)
                     }
                 }
 
@@ -410,12 +520,12 @@ class AndroidBtController(private val context: Context) : BtController {
     }
 
     /**
-     * Answers the prompt this box cannot show. Only inside the window a Pair press opened —
+     * Answers the prompt this box cannot show. Only inside the window a Pair or receive press opened —
      * outside it the request is left alone, so a neighbour's phone cannot bond itself to the
      * speaker by asking at the right moment.
      */
     private fun onPairingRequest(device: BluetoothDevice, intent: Intent) {
-        if (!pairingAutoAccept(pairWindowOpenedAt, SystemClock.elapsedRealtime())) {
+        if (!window.accepts(SystemClock.elapsedRealtime())) {
             AppLog.i("Bluetooth: bỏ qua yêu cầu ghép đôi từ ${device.name ?: device.address}")
             return
         }
@@ -441,6 +551,12 @@ class AndroidBtController(private val context: Context) : BtController {
 
     companion object {
         private const val TAG = "BtController"
+        // Not in android.jar: the strings were read from the ROM's broadcasts
+        // (`dumpsys activity broadcasts`), which do fire on this device.
+        private const val ACTION_SINK_PLAYING_STATE_CHANGED =
+            "android.bluetooth.a2dp.sink.profile.action.PLAYING_STATE_CHANGED"
+        private const val ACTION_SINK_CONNECTION_STATE_CHANGED =
+            "android.bluetooth.a2dp.sink.profile.action.CONNECTION_STATE_CHANGED"
         /** Above an ordinary receiver so the ROM's Settings app is not the one that answers. */
         private const val PAIRING_PRIORITY = 999
         /** What audio gear old enough to ask for a PIN at all asks for. */

@@ -110,6 +110,7 @@ class ControlServer @Inject constructor(
             "/api/bt/scan/start" -> json(bt.startScan())
             "/api/bt/scan/stop" -> { bt.stopScan(); json("""{"ok":true}""") }
             "/api/bt/pair" -> json(bt.pair(param(session, "addr")))
+            "/api/bt/receive" -> json(bt.receiveFromPhone())
             "/api/bt/connect" -> json(bt.connect(param(session, "addr")))
             "/api/bt/disconnect" -> json(bt.disconnect(param(session, "addr")))
             "/api/bt/forget" -> json(bt.forget(param(session, "addr")))
@@ -177,13 +178,13 @@ class ControlServer @Inject constructor(
             "led_music" -> Settings.ledMusic = v
             "playback_sr" -> v.toIntOrNull()?.let { Settings.playbackSampleRate = it }
             "playback_ch" -> v.toIntOrNull()?.let { Settings.playbackChannels = it }
-            "eq_enabled" -> { Settings.eqEnabled = v == "true"; playback.applyAudioSettings() }
+            "eq_enabled" -> { Settings.eqEnabled = v == "true"; applyAudioSettings() }
             "eq_bands" -> {
                 Settings.eqBands = v.split(",").mapNotNull { it.trim().toIntOrNull() }.toIntArray()
-                playback.applyAudioSettings()
+                applyAudioSettings()
             }
             "loudness_mb" -> v.toIntOrNull()?.let {
-                Settings.loudnessMb = it; playback.applyAudioSettings()
+                Settings.loudnessMb = it; applyAudioSettings()
             }
             "volume" -> v.toIntOrNull()?.let { setVolume(it) }
             "llm_provider" -> Settings.llmProvider = v
@@ -199,6 +200,12 @@ class ControlServer @Inject constructor(
             "custom_prompt" -> Settings.customPrompt = v
         }
         return true
+    }
+
+    /** The tuning reaches both the app's own sound and a phone's music received over Bluetooth. */
+    private fun applyAudioSettings() {
+        playback.applyAudioSettings()
+        bt.retune()
     }
 
     private fun previewLed(name: String) {
@@ -774,6 +781,8 @@ class ControlServer @Inject constructor(
                 // round trip -- cheap speakers do misdeclare their class.
                 put("audio", d.audio)
                 put("connected", d.connected)
+                put("streaming_in", d.streamingIn)
+                put("phone", d.phone)
                 d.rssi?.let { put("rssi", it) }
             })
         }
@@ -783,6 +792,11 @@ class ControlServer @Inject constructor(
             put("scanning", st.scanning)
             put("auto_reconnect", st.autoReconnect)
             put("connected", st.connectedAddress)
+            put("adapter_name", st.adapterName)
+            put("scan_mode", st.scanMode.name.lowercase())
+            put("receive_seconds_left", st.receiveSecondsLeft)
+            put("incoming", st.incomingAddress)
+            put("incoming_tuned", st.incomingTuned)
             put("busy", st.busy)
             put("error", st.error)
             put("devices", devices)

@@ -3,11 +3,9 @@ package info.dourok.voicebot
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
-import android.media.audiofx.Equalizer
-import android.media.audiofx.LoudnessEnhancer
 import android.util.Log
 import android.os.SystemClock
-import info.dourok.voicebot.data.Settings
+import info.dourok.voicebot.data.voice.PlaybackEffects
 import info.dourok.voicebot.domain.voice.AppLog
 import info.dourok.voicebot.domain.voice.EqInfo
 import kotlinx.coroutines.CoroutineScope
@@ -32,8 +30,7 @@ class OpusStreamPlayer(
     private lateinit var audioTrack: AudioTrack
     private val playerScope = CoroutineScope(Dispatchers.IO + Job())
     private var isPlaying = false
-    private var equalizer: Equalizer? = null
-    private var loudness: LoudnessEnhancer? = null
+    private var effects: PlaybackEffects? = null
     private var channelConfig = 0
     private var bufferSize = 0
     /** elapsedRealtime of the last rebuild, so a permanently dead output cannot spin (see [onWriteFailed]). */
@@ -50,8 +47,8 @@ class OpusStreamPlayer(
     }
 
     /**
-     * Builds the track and attaches the equalizer to it. Factored out of `init` because the track
-     * is also rebuilt when a write fails -- and the equalizer has to come with it, since it is
+     * Builds the track and attaches the effects to it. Factored out of `init` because the track
+     * is also rebuilt when a write fails -- and the effects have to come with it, since it is
      * bound to the track's audio session id and that id changes.
      */
     private fun buildTrack() {
@@ -66,73 +63,15 @@ class OpusStreamPlayer(
             bufferSize,
             AudioTrack.MODE_STREAM
         )
-        try {
-            equalizer = Equalizer(0, audioTrack.audioSessionId)
-        } catch (e: Exception) {
-            Log.e(TAG, "EQ init failed: ${e.message}")
-        }
-        try {
-            loudness = LoudnessEnhancer(audioTrack.audioSessionId)
-        } catch (e: Exception) {
-            // Registered in audio_effects.conf on this device, but a box without libldnhncr.so is a
-            // box that still has to play -- so this is a missing improvement, not a failure to start.
-            Log.e(TAG, "LoudnessEnhancer unavailable: ${e.message}")
-        }
-        applyAudioSettings()
+        effects = PlaybackEffects(audioTrack.audioSessionId)
     }
 
-    /**
-     * Re-read the playback tuning and apply it live.
-     *
-     * Loudness is **not** gated on [Settings.eqEnabled], deliberately: level and tone are two
-     * different questions with two different answers, and the case that produced this — a Bluetooth
-     * speaker that was too quiet with the equalizer switched off — is exactly the one a shared
-     * switch would have made unreachable.
-     */
+    /** Re-read the playback tuning and apply it live. */
     fun applyAudioSettings() {
-        applyLoudness()
-        val eq = equalizer ?: return
-        try {
-            eq.enabled = Settings.eqEnabled
-            if (Settings.eqEnabled) {
-                val bands = Settings.eqBands
-                val lo = eq.bandLevelRange[0].toInt()
-                val hi = eq.bandLevelRange[1].toInt()
-                for (b in 0 until eq.numberOfBands.toInt()) {
-                    val mb = (bands.getOrNull(b) ?: 0).coerceIn(lo, hi)
-                    eq.setBandLevel(b.toShort(), mb.toShort())
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "applyEq failed: ${e.message}")
-        }
+        effects?.apply()
     }
 
-    private fun applyLoudness() {
-        try {
-            loudness?.let {
-                val mb = Settings.loudnessMb
-                it.setTargetGain(mb)
-                it.enabled = mb > 0
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "loudness failed: ${e.message}")
-        }
-    }
-
-    fun eqInfo(): EqInfo? {
-        val eq = equalizer ?: return null
-        return try {
-            val n = eq.numberOfBands.toInt()
-            EqInfo(
-                freqsHz = IntArray(n) { eq.getCenterFreq(it.toShort()) / 1000 }, // mHz -> Hz
-                minMb = eq.bandLevelRange[0].toInt(),
-                maxMb = eq.bandLevelRange[1].toInt(),
-            )
-        } catch (e: Exception) {
-            null
-        }
-    }
+    fun eqInfo(): EqInfo? = effects?.eqInfo()
 
     fun start(pcmFlow: Flow<ByteArray?>) {
         if (!isPlaying) {
@@ -195,10 +134,8 @@ class OpusStreamPlayer(
         lastRebuildAt = now
         AppLog.w("Âm thanh: AudioTrack trả lỗi $code, dựng lại")
         Log.e(TAG, "write() returned $code, rebuilding the track")
-        try { equalizer?.release() } catch (_: Exception) {}
-        equalizer = null
-        try { loudness?.release() } catch (_: Exception) {}
-        loudness = null
+        effects?.release()
+        effects = null
         try { audioTrack.release() } catch (e: Exception) { Log.e(TAG, "rebuild release: ${e.message}") }
         buildTrack()
         if (isPlaying && audioTrack.state == AudioTrack.STATE_INITIALIZED) audioTrack.play()
@@ -207,10 +144,8 @@ class OpusStreamPlayer(
     fun release() {
         stop()
         playerScope.cancel()  // stop the incomingAudioFlow collector coroutine (otherwise it leaks)
-        try { equalizer?.release() } catch (_: Exception) {}
-        equalizer = null
-        try { loudness?.release() } catch (_: Exception) {}
-        loudness = null
+        effects?.release()
+        effects = null
         try { audioTrack.release() } catch (e: Exception) { Log.e(TAG, "release: ${e.message}") }
     }
 

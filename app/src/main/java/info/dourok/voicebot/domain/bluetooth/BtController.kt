@@ -16,7 +16,17 @@ data class BtDevice(
     val connected: Boolean,
     /** Signal strength from a scan, in dBm. Null for a bonded device nobody has just seen. */
     val rssi: Int?,
+    /** This device is playing into the R1 right now (A2DP **sink** connection). */
+    val streamingIn: Boolean,
+    /**
+     * A phone or computer by Bluetooth class. Such a device is a source, never an output: the panel
+     * must not offer to "connect" it as a speaker.
+     */
+    val phone: Boolean,
 )
+
+/** The adapter's visibility, as `BluetoothAdapter.getScanMode()` reports it. */
+enum class BtScanMode { NONE, CONNECTABLE, DISCOVERABLE }
 
 /** Everything the panel polls while its Bluetooth card is open. */
 data class BtState(
@@ -24,10 +34,19 @@ data class BtState(
     val enabled: Boolean,
     val scanning: Boolean,
     val autoReconnect: Boolean,
+    /** The adapter's own name, which is what a phone searches for when it wants to play into the R1. */
+    val adapterName: String,
+    val scanMode: BtScanMode,
+    /** Seconds left in the window a "receive from phone" press opened, or 0. See [PairingWindow]. */
+    val receiveSecondsLeft: Int,
     /** Bonded devices first, then what the last scan found. See [orderForPanel]. */
     val devices: List<BtDevice>,
     /** Address of the device audio is currently going to, or "" when none. */
     val connectedAddress: String,
+    /** Address of the phone playing into this device (A2DP sink), or "" when none. */
+    val incomingAddress: String,
+    /** The received music has the app's equalizer and loudness on it (see SinkEffects). */
+    val incomingTuned: Boolean,
     /** What is in flight right now ("pairing", "connecting", …), or "" when idle. */
     val busy: String,
     /** Last failure worth showing, or "". */
@@ -49,7 +68,9 @@ data class BtResult(val ok: Boolean, val error: String = "") {
 /**
  * Bluetooth audio out: this device pairs with a speaker or headphones and plays through them
  * (A2DP **source**). The opposite direction — a phone streaming into the R1 — is the platform's
- * own A2dpSinkService and is deliberately not driven from here.
+ * own A2dpSinkService, which plays what it receives. This interface drives that direction only in
+ * the narrow sense of opening the door ([receiveFromPhone]); the streaming itself stays the
+ * platform's.
  */
 interface BtController {
     /** Register receivers, bind the A2DP proxy, and try the remembered device once. */
@@ -65,6 +86,14 @@ interface BtController {
 
     /** Bond, auto-accepting a PIN/passkey prompt for a short window because this box has no screen. */
     fun pair(address: String): BtResult
+
+    /**
+     * Lets a phone find and pair with this device, for [RECEIVE_WINDOW_MS]: makes the adapter
+     * discoverable and accepts one incoming pairing request inside that window. The box has no
+     * screen, so the platform's own "discoverable" dialog cannot be answered. Once the phone is
+     * bonded the window closes; the phone then connects A2DP itself.
+     */
+    fun receiveFromPhone(): BtResult
 
     fun connect(address: String): BtResult
 
@@ -87,6 +116,9 @@ interface BtController {
 
     /** That index as the platform holds it, or -1 when nothing is connected or it cannot be read. */
     fun outputVolumeIndex(): Int
+
+    /** The panel changed the equalizer or loudness: apply it to the music a phone is playing in too. */
+    fun retune()
 }
 
 /**
@@ -130,6 +162,31 @@ fun reconnectTarget(
 
 /** How long a Pair press keeps the door open for an unattended PIN/passkey answer. */
 const val PAIRING_WINDOW_MS = 30_000L
+
+/** How long "receive from phone" stays discoverable: Android's own default discoverable duration. */
+const val RECEIVE_WINDOW_MS = 120_000L
+
+/**
+ * The span in which an unattended pairing request is answered. One value, so opening it is one
+ * atomic write. Both clocks are elapsed-realtime readings; see [pairingAutoAccept].
+ *
+ * [forReceive] says which press opened it: Pair (an outgoing bond to a speaker) or "receive from
+ * phone" (an incoming one). Only the second is shown on the panel as a countdown.
+ */
+data class PairingWindow(val openedAtMs: Long, val lengthMs: Long, val forReceive: Boolean = false) {
+    fun accepts(nowMs: Long): Boolean = pairingAutoAccept(openedAtMs, nowMs, lengthMs)
+
+    /** Whole seconds until it closes, rounded up so "1" is shown until the very end; 0 once closed. */
+    fun secondsLeft(nowMs: Long): Int {
+        if (!accepts(nowMs)) return 0
+        val leftMs = openedAtMs + lengthMs - nowMs
+        return ((leftMs + 999L) / 1000L).toInt()
+    }
+
+    companion object {
+        val CLOSED = PairingWindow(0L, 0L)
+    }
+}
 
 /**
  * Whether a pairing prompt arriving now should be answered without asking anybody.

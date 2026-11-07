@@ -65,7 +65,7 @@ $ADB -s 10.25.113.209:5555 push app/build/outputs/apk/release/app-release.apk /d
 | Codec | `OpusEncoder/Decoder/StreamPlayer.kt` | Opus 16kHz. |
 | Playback | `data/voice/OpusAudioPlayback.kt` | AudioTrack + Equalizer (`domain/voice/AudioPlayback.kt`). |
 | LED | `data/voice/MsgCenterLedIndicator.kt` | LED ring QUA system service **msgcenter** (`sendMsg(4096,code,0)` reflection) — KHÔNG ghi sysfs. Không bật được cả 2 vòng đèn cùng lúc. |
-| Bluetooth | `domain/bluetooth/BtController.kt` + `data/bluetooth/{AndroidBtController,BtHidden}.kt` | **A2DP source**: ghép đôi loa/tai nghe rồi phát tiếng RA đó. Chiều ngược (điện thoại stream VÀO R1) là `A2dpSinkService` của platform, cố ý không điều khiển từ đây. Xem Gotchas. |
+| Bluetooth | `domain/bluetooth/BtController.kt` + `data/bluetooth/{AndroidBtController,BtHidden}.kt` | **A2DP source**: ghép đôi loa/tai nghe rồi phát tiếng RA đó. Chiều ngược (điện thoại stream VÀO R1, A2DP sink) do `A2dpSinkService` của ROM tự phát; app chỉ **mở cửa** (`receiveFromPhone()`: discoverable 120s + tự đồng ý một yêu cầu ghép đôi trong cửa sổ đó) và đọc ai đang stream vào, rồi gắn EQ + loudness của panel vào track nhận nhạc của ROM (`SinkEffects`). **Chưa đo trên máy.** Xem Gotchas. |
 | Config | `data/AppConfig.kt` (default) + `data/Settings.kt` (SharedPreferences, runtime) | Settings đổi live qua control panel; một số cần restart app (mic_source, sample rate). |
 | Protocol | `protocol/WebsocketProtocol.kt` | WS tới server `ws://<mac>:8000/xiaozhi/v1/`. Connect-on-wake. |
 | Media | `domain/voice/MediaSessionState.kt` + `MediaCommands.kt` | Nhạc đi CHUNG pipeline voice (không có player riêng — ExoPlayer đã gỡ). State `IDLE/DOWNLOADING/PLAYING/PAUSED/STOPPED` + queue, server đẩy xuống qua WS. |
@@ -90,7 +90,7 @@ Web control on-device (NanoHTTPD) như control center của aiboxplus. Mở `htt
   | Setup | `/api/setup/server?ota=`, `/api/setup/wake?engine=`, `/api/setup/llm` |
   | LLM | `/api/llm/models`, `/api/llm/test` |
   | Home Assistant | `/api/ha/test`, `/api/ha/devices` |
-  | Bluetooth | `/api/bt/state`, `/api/bt/enable?on=`, `/api/bt/scan/{start,stop}`, `/api/bt/{pair,connect,disconnect,forget}?addr=`, `/api/bt/auto?on=` |
+  | Bluetooth | `/api/bt/state`, `/api/bt/enable?on=`, `/api/bt/scan/{start,stop}`, `/api/bt/{pair,connect,disconnect,forget}?addr=`, `/api/bt/receive`, `/api/bt/auto?on=` |
 
   `/api/state.chat[]` gồm `sender`,`text`,`time` — epoch-ms THẬT lấy từ `ConversationLog.Entry.time`
   lúc tin nhắn xảy ra, KHÔNG phải giờ client poll thấy.
@@ -160,7 +160,8 @@ Watchdog `com.user.robot-r1watchdog` tự `am force-stop; am start` khi app ch�
 Máy **có** Bluetooth và có cả hai chiều: chip **AP6335** trên UART `/dev/ttyS1`, addr
 `98:BB:99:3F:2E:2C`, tên `Phicomm_R1_2E2B`; chạy sẵn `A2dpService` (source), `A2dpSinkService`,
 `HeadsetService`, `AvrcpControllerService`; `audio_policy.conf` có cả `AUDIO_DEVICE_OUT_ALL_A2DP` và
-`AUDIO_DEVICE_IN_BLUETOOTH_A2DP`. App chỉ làm chiều **source**.
+`AUDIO_DEVICE_IN_BLUETOOTH_A2DP`. App làm chiều **source** đầy đủ; chiều **sink** chỉ mở cửa (xem mục
+"Nhận nhạc từ điện thoại" cuối phần này).
 
 - **Ba method phải gọi bằng reflection**, cả ba đã xác nhận CÓ trên ROM này:
   `BluetoothDevice.removeBond()` (= "forget"), `BluetoothA2dp.connect()/disconnect()`. Còn
@@ -191,6 +192,48 @@ Máy **có** Bluetooth và có cả hai chiều: chip **AP6335** trên UART `/de
   lúc profile proxy sẵn sàng mà đã có thiết bị nối sẵn.
 - Danh sách quét mang cờ `audio` chứ không lọc ở server, nên switch "hiện tất cả" không tốn round
   trip. Loa rẻ khai báo sai device class là chuyện có thật.
+
+#### Nhận nhạc từ điện thoại (A2DP sink) — viết 07/11/2026, **chưa đo trên máy**
+
+Đo được trước đó: `A2dpService`, `A2dpSinkService`, `AvrcpControllerService` đều chạy, adapter bật; `Bluetooth.odex`
+của ROM có `A2dpSinkStateMachine$PlayerThread` và `$RecordThread` → **chính ROM phát âm thanh nhận được ra
+loa**, app không phải định tuyến gì. Còn thiếu hai thứ, và app chỉ làm hai thứ đó:
+
+- **Máy phải hiện ra cho điện thoại tìm được.** Không màn hình nên hộp thoại "discoverable" của platform
+  không dùng được; nút "Nhận nhạc từ điện thoại" (`/api/bt/receive`) gọi `BluetoothAdapter.setScanMode(23, 120)`
+  (hidden, reflection trong `BtHidden`). `BluetoothProfile.A2DP_SINK` cũng hidden và **được đọc bằng
+  reflection chứ không chép số** vì giá trị khác nhau giữa các bản Android.
+- **Yêu cầu ghép đôi đến từ điện thoại phải được đồng ý, nhưng chỉ trong cửa sổ người vừa mở.** Cùng quy tắc
+  với Pair: auto-accept vô điều kiện thì thiết bị lạ trong nhà ghép được. `PairingWindow(openedAtMs, lengthMs)`
+  là một giá trị, mở nó là một lần ghi `@Volatile` (Pair: 30s, Receive: `RECEIVE_WINDOW_MS` = 120s = mặc định
+  discoverable của Android). Đo bằng `elapsedRealtime`. Điện thoại ghép xong thì cửa đóng ngay và scan mode về
+  `CONNECTABLE`; app **không** nối điện thoại đó như một source (guard `pairing == address` giữ nguyên).
+- Sau khi ghép đôi, **điện thoại tự nối A2DP**; app chỉ đọc `getConnectedDevices()` của proxy sink (public)
+  mỗi lần `state()` — kết nối nằm trong stack nên sống qua restart app. Panel hiện "Đang nhận nhạc từ …".
+  Thiết bị `phone` (class PHONE/COMPUTER) không có nút "Nối": nối điện thoại như loa ra là nút chết.
+- **Nhạc nhận vào nhỏ hơn tiếng của app — đã đo, và đã sửa (07/11/2026).** `com.android.bluetooth` (pid 799 lúc
+  đo) phát âm thanh nhận được bằng `AudioTrack` riêng, STREAM_MUSIC, mixer **-1.8 dB** (gần full), và **không có
+  effect nào**; track của app (`OpusStreamPlayer`) thì có Equalizer + LoudnessEnhancer (`loudness_mb`=500, EQ
+  `[1000,0,-600,0,800]`). Chênh lệch đó chính là độ nhỏ. Cách chữa là gắn EQ + loudness của panel vào session
+  của track Bluetooth (`data/bluetooth/SinkEffects.kt`, `data/voice/PlaybackEffects.kt`):
+  - **Gắn effect vào session của process khác được.** Đã thử `LoudnessEnhancer(54)` từ uid khác: `setEnabled`
+    trả 0 và chuỗi effect hiện ra trên session 54 trong `dumpsys media.audio_flinger`.
+  - **API 22 không có cách công khai để biết session của process khác**, nên session được đọc qua shell 8080
+    (`R1Shell`, `ws://127.0.0.1:8080`): `ps` lấy pid của `com.android.bluetooth`, rồi `dumpsys media.audio_flinger`
+    lấy hàng **Output thread** có `Client` = pid đó (`domain/bluetooth/SinkSession.kt`, thuần, có test với output
+    chép nguyên văn). Hàng của *input thread* (không có cột Name đầu dòng) là `AudioRecord` của Bluetooth
+    (session 53) và **không được chọn**. Lệnh kết thúc bằng `echo __EN''D__` có chủ ý: frame đầu của shell
+    echo lại lệnh, viết thẳng `__END__` thì dấu kết thúc khớp ngay với bản echo.
+  - Hai broadcast `android.bluetooth.a2dp.sink.profile.action.PLAYING_STATE_CHANGED` và `...CONNECTION_STATE_CHANGED`
+    **có bắn** trên ROM này (thấy trong `dumpsys activity broadcasts`; không có trong android.jar nên khai chuỗi
+    hằng). Track có thể được tạo sau broadcast nên tìm lại sau 0,5s / 1,5s / 3s; proxy sink sẵn sàng cũng tìm một
+    lần vì stream sống qua restart app. Panel hiện "đã áp EQ và loudness" hay "chưa áp được EQ" theo `incoming_tuned`.
+  - Đổi EQ/loudness trên panel áp luôn vào nhạc đang nhận (`ControlServer.applyAudioSettings()` gọi cả
+    `playback` lẫn `bt.retune()`).
+  - Player của Phicomm (pid 855) giữ các effect **global đang tắt** trên session 0; để nguyên, không đụng.
+- **Chưa biết (phải đo)**: điện thoại đã ghép đôi có tự nối lại được khi `scan_mode` là `none`/không
+  connectable không; setScanMode có thực sự thành công trên ROM API 22 này không; âm lượng/AVRCP khi stream vào.
+  Panel hiện sự thật (`scan_mode`) chứ không hứa gì.
 
 ### Âm thanh qua Bluetooth: nén là thật, và âm lượng đi vào bucket sai
 

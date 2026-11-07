@@ -21,7 +21,9 @@ class BtControllerTest {
         name: String = "",
         bonded: Boolean = false,
         audio: Boolean = false,
-    ) = BtDevice(address, name, bonded, audio, connected = false, rssi = null)
+    ) = BtDevice(
+        address, name, bonded, audio, connected = false, rssi = null, streamingIn = false, phone = false,
+    )
 
     // ── orderForPanel ────────────────────────────────────────────────────────
 
@@ -165,5 +167,50 @@ class BtControllerTest {
     @Test
     fun `a clock that went backwards does not open the window`() {
         assertFalse(pairingAutoAccept(openedAtMs = 10_000L, nowMs = 5_000L))
+    }
+
+    // ── PairingWindow ────────────────────────────────────────────────────────
+
+    @Test
+    fun `a closed window accepts nothing and has no seconds left`() {
+        assertFalse(PairingWindow.CLOSED.accepts(nowMs = 5_000L))
+        assertEquals(0, PairingWindow.CLOSED.secondsLeft(nowMs = 5_000L))
+    }
+
+    @Test
+    fun `the receive window accepts at 119 seconds and not at 120`() {
+        val w = PairingWindow(openedAtMs = 1_000L, lengthMs = RECEIVE_WINDOW_MS, forReceive = true)
+        assertTrue(w.accepts(1_000L + 119_000L))
+        assertFalse(w.accepts(1_000L + 120_000L))
+    }
+
+    @Test
+    fun `seconds left rounds up, so the last partial second still reads 1`() {
+        val w = PairingWindow(openedAtMs = 1_000L, lengthMs = RECEIVE_WINDOW_MS)
+        assertEquals(120, w.secondsLeft(nowMs = 1_000L))
+        assertEquals(120, w.secondsLeft(nowMs = 1_001L))
+        assertEquals(119, w.secondsLeft(nowMs = 2_000L))
+        assertEquals(1, w.secondsLeft(nowMs = 1_000L + 119_999L))
+    }
+
+    @Test
+    fun `seconds left is 0 at and after expiry`() {
+        val w = PairingWindow(openedAtMs = 1_000L, lengthMs = RECEIVE_WINDOW_MS)
+        assertEquals(0, w.secondsLeft(nowMs = 1_000L + RECEIVE_WINDOW_MS))
+        assertEquals(0, w.secondsLeft(nowMs = 1_000L + RECEIVE_WINDOW_MS + 60_000L))
+    }
+
+    @Test
+    fun `a window opened before the clock went backwards neither accepts nor counts down`() {
+        val w = PairingWindow(openedAtMs = 10_000L, lengthMs = RECEIVE_WINDOW_MS)
+        assertFalse(w.accepts(nowMs = 5_000L))
+        assertEquals(0, w.secondsLeft(nowMs = 5_000L))
+    }
+
+    @Test
+    fun `the Pair window is the shorter one and agrees with pairingAutoAccept`() {
+        val w = PairingWindow(openedAtMs = 1_000L, lengthMs = PAIRING_WINDOW_MS)
+        assertTrue(w.accepts(1_000L + PAIRING_WINDOW_MS - 1))
+        assertFalse(w.accepts(1_000L + PAIRING_WINDOW_MS))
     }
 }
