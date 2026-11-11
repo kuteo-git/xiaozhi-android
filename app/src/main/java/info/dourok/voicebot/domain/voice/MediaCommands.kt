@@ -16,6 +16,8 @@ object MediaCommands {
     sealed class Command {
         /** [itemsJson]: JSON array of the panel's WHOLE displayed list; [startIndex]: tapped song. */
         data class Play(val itemsJson: String, val startIndex: Int) : Command()
+        /** [itemsJson]: what plays after the current song, replacing what was sent before. */
+        data class Queue(val itemsJson: String) : Command()
         object Next : Command()
         data class Seek(val positionS: Int) : Command()
         object Pause : Command()

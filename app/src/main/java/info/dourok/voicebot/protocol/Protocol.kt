@@ -121,6 +121,17 @@ abstract class Protocol {
         sendText(json.toString())
     }
 
+    /** What plays after the current song, replacing the rest of the list [sendMediaPlay] sent. */
+    suspend fun sendMediaQueue(itemsJson: String) {
+        val json = JSONObject().apply {
+            put("session_id", sessionId)
+            put("type", "media")
+            put("action", "queue")
+            put("items", org.json.JSONArray(itemsJson))
+        }
+        sendText(json.toString())
+    }
+
     suspend fun sendMediaNext() {
         val json = JSONObject().apply {
             put("session_id", sessionId)

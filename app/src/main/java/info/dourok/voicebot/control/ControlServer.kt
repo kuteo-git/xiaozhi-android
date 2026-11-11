@@ -90,6 +90,7 @@ class ControlServer @Inject constructor(
             "/api/ha/test" -> json(handleHaTest(session))
             "/api/media/search" -> json(handleMediaSearch(param(session, "q")))
             "/api/media/play" -> json(handleMediaPlay(session))
+            "/api/media/queue" -> json(handleMediaQueue(session))
             "/api/media/seek" -> {
                 param(session, "position_s").toIntOrNull()
                     ?.let { MediaCommands.flow.tryEmit(MediaCommands.Command.Seek(it)) }
@@ -576,6 +577,28 @@ class ControlServer @Inject constructor(
      * query string that long silently truncates while still returning 200 (the same trap the
      * Assistant persona hit in [handleSet]).
      */
+    /**
+     * Replaces what plays after the current song, without cutting it off: a phone edited the list
+     * it started. Body: {items:[...]} in the same shape as /api/media/play; an empty list means
+     * nothing after this song. The server takes it at the next song boundary.
+     */
+    private fun handleMediaQueue(session: IHTTPSession): String {
+        val body = HashMap<String, String>()
+        try {
+            session.parseBody(body)
+        } catch (e: Exception) {
+            Log.e(TAG, "parseBody for /api/media/queue: ${e.message}")
+            return """{"ok":false,"error":"could not read body"}"""
+        }
+        val items = try {
+            JSONObject(body["postData"].orEmpty()).optJSONArray("items")
+        } catch (e: Exception) {
+            null
+        } ?: return """{"ok":false,"error":"body must be {items:[...]}"}"""
+        MediaCommands.flow.tryEmit(MediaCommands.Command.Queue(items.toString()))
+        return """{"ok":true}"""
+    }
+
     private fun handleMediaPlay(session: IHTTPSession): String {
         val body = HashMap<String, String>()
         try {

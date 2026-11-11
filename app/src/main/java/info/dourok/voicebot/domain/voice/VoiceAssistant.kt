@@ -455,6 +455,7 @@ class VoiceAssistant @Inject constructor(
         }
         when (cmd) {
             is MediaCommands.Command.Next -> protocol.sendMediaNext()
+            is MediaCommands.Command.Queue -> protocol.sendMediaQueue(cmd.itemsJson)
             is MediaCommands.Command.Seek -> protocol.sendMediaSeek(cmd.positionS)
             is MediaCommands.Command.Pause -> protocol.sendMediaPause()
             is MediaCommands.Command.Resume -> protocol.sendMediaResume()
