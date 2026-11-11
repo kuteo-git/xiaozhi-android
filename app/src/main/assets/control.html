@@ -573,6 +573,11 @@ select:active,select:focus{box-shadow:0 0 0 4px var(--grad-dim);}
 <!-- SETTINGS -->
 <div id="pset" class="page on">
   <div class="settings">
+    <div class="card" id="wakeCard" hidden>
+      <div class="ch"><span class="icon-badge ib-wake"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="4" cy="16" r="1.3" fill="currentColor" stroke="none"/><path d="M7 13a6 6 0 018 0"/><path d="M9.3 15.3a3 3 0 014 0"/></svg></span><h2>Từ đánh thức</h2><label class="sw"><input type="checkbox" id="wakeOn" onchange="wakeSet(this.checked)" aria-label="Bật/tắt từ đánh thức"><span></span></label></div>
+      <div class="hint">Tắt để loa không phản ứng khi gọi; nút trên loa vẫn đánh thức được.</div>
+      <div class="hint" id="wakeErr" role="alert" hidden style="color:var(--err)"></div>
+    </div>
     <div class="card">
       <div class="ch"><span class="icon-badge ib-amp"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h3l5-4v12l-5-4H3z" fill="currentColor" stroke="none"/><path d="M14 7c1 1 1 5 0 6"/><path d="M16.5 5c2 2 2 8 0 10"/></svg></span><h2>Âm thanh</h2></div>
       <div class="row"><label>Âm lượng</label><input type="range" id="vol" min="0" max="100"><span class="val" id="volv">–</span></div>
@@ -1108,6 +1113,7 @@ function updateVoiceOrb(s){
 function render(s){
   updateVoiceOrb(s);
   if(s.volume_steps>0&&s.volume_steps!==volSteps){volSteps=s.volume_steps;$('vol').max=volSteps;}
+  renderWake(s);
   // Never redraw the slider mid-drag (same guard the LED fields use below): the poll landing a
   // moment after release is what made the value visibly jump back.
   if(document.activeElement!==$('vol')){$('vol').value=volIdx(s.volume);$('volv').textContent=s.volume+'%';}
@@ -1175,6 +1181,34 @@ function render(s){
   if(sig!==lastSig){lastSig=sig;renderChat(s.chat);}
 }
 function onEq(i,v){bands[i]=parseInt(v);$('g'+i).textContent=(v/100).toFixed(0);set('eq_bands',bands.join(','));}
+// wake_enabled has no write-back guard from the poll itself, and /api/state is polled every 1.5s: a
+// poll sent before the write can land after it and flip the switch back under the finger. Same
+// shape as the Bluetooth switch: hold the value the user chose until a poll shows it, or for a
+// short while, counted from when the write was ACKed (a poll in flight then began before it).
+// Absent wake_enabled = an older build without the route, so no switch is drawn.
+let wakePendingUntil=0,wakeWanted=false,wakeSeq=0;
+const WAKE_HOLD_MS=2500;
+function renderWake(s){
+  const has=typeof s.wake_enabled==='boolean';
+  $('wakeCard').hidden=!has;
+  if(!has)return;
+  if(Date.now()<wakePendingUntil&&s.wake_enabled!==wakeWanted){$('wakeOn').checked=wakeWanted;}
+  else{$('wakeOn').checked=s.wake_enabled;wakePendingUntil=0;}
+}
+function wakeErr(msg){$('wakeErr').textContent=msg;$('wakeErr').hidden=!msg;}
+async function wakeSet(on){
+  const seq=++wakeSeq;
+  wakeWanted=on;wakePendingUntil=Date.now()+WAKE_HOLD_MS;wakeErr('');
+  try{
+    const j=await(await fetch('/api/wake/enable?on='+(on?1:0),{method:'POST'})).json();
+    if(!j.ok)throw new Error('refused');
+    if(seq===wakeSeq)wakePendingUntil=Date.now()+WAKE_HOLD_MS;
+  }catch(e){
+    if(seq!==wakeSeq)return;     // a later flip owns the switch now
+    wakePendingUntil=0;$('wakeOn').checked=!on;
+    wakeErr('Không đổi được từ đánh thức — đã trả về như cũ. Thử lại.');
+  }
+}
 
 // ── Slider-binding helper ─────────────────────────
 // A range input paired with a "current value" label, pushing to the server on every drag tick, is

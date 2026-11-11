@@ -146,6 +146,7 @@ class VoiceAssistant @Inject constructor(
             launch { protocol.incomingJsonFlow.collect(::handleServerMessage) }
             launch { TextCommands.flow.collect { onTextCommand(it) } }
             launch { MediaCommands.flow.collect { onMediaCommand(it) } }
+            launch { VoiceCommands.flow.collect { onVoiceCommand(it) } }
             // Media state is server-pushed only, so a dropped channel would freeze the last
             // snapshot on the control panel (a song stuck "playing" with silence). Clear it.
             launch {
@@ -274,7 +275,9 @@ class VoiceAssistant @Inject constructor(
                     // while speaking so the speaker output doesn't false-trigger; AEC keeps a real
                     // "Alexa" audible.
                     wakeWord.setStrict(state.value == VoiceState.SPEAKING)
-                    if (wakeWord.process(pcm)) onWake()
+                    // Detector still runs while wake is off so its state stays warm; only the
+                    // detection is dropped here, where it would become a wake.
+                    if (WakeGate.accepts(wakeWord.process(pcm), Settings.wakeEnabled)) onWake()
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "audio loop error (frame skipped): ${e.message}")
@@ -478,23 +481,37 @@ class VoiceAssistant @Inject constructor(
                 startAgc()
                 state.value = VoiceState.LISTENING
             } else {
-                // Awake (LISTENING or SPEAKING) -> always SLEEP. The button is a reliable "turn off".
-                // Previously a press while SPEAKING interrupted-and-kept-listening (barge-in), so
-                // during a conversation loop (e.g. with the TV) the press rarely landed on LISTENING
-                // and couldn't put it to sleep. Stop playback, close the channel, go idle.
-                playback.flush()
-                chimeGuard(sounds.playStop(), STOP_CHIME_MARGIN_MS)
-                isAwake = false
-                isMusic = false
-                protocol.closeAudioChannel()
-                state.value = VoiceState.IDLE
-                // Matches backToWake()'s reset -- without it, a wake detector with real
-                // cross-call state (e.g. MaiOiWakeWordDetector's frame accumulator + native
-                // frontend buffers) can carry stale partial state into the next listening
-                // session and misfire immediately on resume.
-                wakeWord.reset()
+                sleepNow()
             }
         }
+    }
+
+    /** Control-panel sleep: same path as the button's awake branch, nothing when already idle. */
+    private fun onVoiceCommand(cmd: VoiceCommands.Command) {
+        when (cmd) {
+            is VoiceCommands.Command.Sleep -> scope.launch {
+                autoTurns = 0
+                if (isAwake) sleepNow()
+            }
+        }
+    }
+
+    private suspend fun sleepNow() {
+        // Awake (LISTENING or SPEAKING) -> always SLEEP. The button is a reliable "turn off".
+        // Previously a press while SPEAKING interrupted-and-kept-listening (barge-in), so
+        // during a conversation loop (e.g. with the TV) the press rarely landed on LISTENING
+        // and couldn't put it to sleep. Stop playback, close the channel, go idle.
+        playback.flush()
+        chimeGuard(sounds.playStop(), STOP_CHIME_MARGIN_MS)
+        isAwake = false
+        isMusic = false
+        protocol.closeAudioChannel()
+        state.value = VoiceState.IDLE
+        // Matches backToWake()'s reset -- without it, a wake detector with real
+        // cross-call state (e.g. MaiOiWakeWordDetector's frame accumulator + native
+        // frontend buffers) can carry stale partial state into the next listening
+        // session and misfire immediately on resume.
+        wakeWord.reset()
     }
 
     private fun addMessage(sender: String, text: String) {

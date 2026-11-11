@@ -23,6 +23,7 @@ import info.dourok.voicebot.domain.voice.MediaPlaybackState
 import info.dourok.voicebot.domain.voice.MediaSessionState
 import info.dourok.voicebot.domain.voice.MicTest
 import info.dourok.voicebot.domain.voice.TextCommands
+import info.dourok.voicebot.domain.voice.VoiceCommands
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -100,6 +101,11 @@ class ControlServer @Inject constructor(
             "/api/media/pause" -> { MediaCommands.flow.tryEmit(MediaCommands.Command.Pause); json("""{"ok":true}""") }
             "/api/media/resume" -> { MediaCommands.flow.tryEmit(MediaCommands.Command.Resume); json("""{"ok":true}""") }
             "/api/media/stop" -> { MediaCommands.flow.tryEmit(MediaCommands.Command.Stop); json("""{"ok":true}""") }
+            "/api/voice/sleep" -> { VoiceCommands.flow.tryEmit(VoiceCommands.Command.Sleep); json("""{"ok":true}""") }
+            "/api/wake/enable" -> {
+                Settings.wakeEnabled = param(session, "on") == "1"
+                json("""{"ok":true}""")
+            }
             "/api/media/state" -> json(buildMediaState())
             "/api/logs" -> json(buildLogs(param(session, "since").toLongOrNull() ?: 0L))
             "/api/logs/clear" -> { AppLog.clear(); AppLog.i("Đã xoá log"); json("""{"ok":true}""") }
@@ -295,6 +301,7 @@ class ControlServer @Inject constructor(
         o.put("llm_model", Settings.llmModel)
         o.put("llm_transport", Settings.llmTransport)
         o.put("wake_engine", Settings.wakeEngine)
+        o.put("wake_enabled", Settings.wakeEnabled)
         o.put("ota_url", Settings.otaUrl)
         o.put("ws_url", Settings.wsUrl)
         // TTS host derived from the configured WS host (de-hardcode); empty until a server is set.

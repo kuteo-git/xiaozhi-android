@@ -126,6 +126,11 @@ object Settings {
         get() = prefs.getString("wake_engine", "alexa")!!
         set(v) = prefs.edit().putString("wake_engine", v).apply()
 
+    /** When false, wake-word detections are ignored; button, typed text, media Play and the news alarm still wake. */
+    var wakeEnabled: Boolean
+        get() = prefs.getBoolean("wake_enabled", true)
+        set(v) = prefs.edit().putBoolean("wake_enabled", v).apply()
+
     /** Playback channels (1 / 2). Applied on app restart; must match the server. */
     var playbackChannels: Int
         get() = prefs.getInt("playback_ch", AppConfig.PLAYBACK_CHANNELS)
