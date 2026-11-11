@@ -758,12 +758,13 @@ select:active,select:focus{box-shadow:0 0 0 4px var(--grad-dim);}
     </div>
     <div class="media-search">
       <svg class="ms-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>
-      <input class="codein ui" id="mediaSearch" placeholder="Tìm bài hát…" oninput="onMediaSearchInput()">
+      <input class="codein ui" id="mediaSearch" placeholder="Tìm bài hát… (a, b, c)" oninput="onMediaSearchInput()">
       <button class="ms-clear" id="mediaClear" onclick="clearMediaSearch()" aria-label="Xoá tìm kiếm" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       <svg class="ms-spin" id="mediaSpin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" hidden><circle cx="12" cy="12" r="9" stroke-dasharray="14 42"/></svg>
     </div>
   </div>
   <div id="mediaScroll" class="media-scroll">
+    <div class="hint" id="mediaNote" role="alert" hidden style="color:var(--err);padding:6px 13px 0"></div>
     <div id="mediaResults"></div>
   </div>
 </div>
@@ -1112,8 +1113,8 @@ function updateVoiceOrb(s){
 }
 function render(s){
   updateVoiceOrb(s);
-  if(s.volume_steps>0&&s.volume_steps!==volSteps){volSteps=s.volume_steps;$('vol').max=volSteps;}
   renderWake(s);
+  if(s.volume_steps>0&&s.volume_steps!==volSteps){volSteps=s.volume_steps;$('vol').max=volSteps;}
   // Never redraw the slider mid-drag (same guard the LED fields use below): the poll landing a
   // moment after release is what made the value visibly jump back.
   if(document.activeElement!==$('vol')){$('vol').value=volIdx(s.volume);$('volv').textContent=s.volume+'%';}
@@ -1180,7 +1181,6 @@ function render(s){
   const sig=JSON.stringify(s.chat);
   if(sig!==lastSig){lastSig=sig;renderChat(s.chat);}
 }
-function onEq(i,v){bands[i]=parseInt(v);$('g'+i).textContent=(v/100).toFixed(0);set('eq_bands',bands.join(','));}
 // wake_enabled has no write-back guard from the poll itself, and /api/state is polled every 1.5s: a
 // poll sent before the write can land after it and flip the switch back under the finger. Same
 // shape as the Bluetooth switch: hold the value the user chose until a poll shows it, or for a
@@ -1209,6 +1209,7 @@ async function wakeSet(on){
     wakeErr('Không đổi được từ đánh thức — đã trả về như cũ. Thử lại.');
   }
 }
+function onEq(i,v){bands[i]=parseInt(v);$('g'+i).textContent=(v/100).toFixed(0);set('eq_bands',bands.join(','));}
 
 // ── Slider-binding helper ─────────────────────────
 // A range input paired with a "current value" label, pushing to the server on every drag tick, is
@@ -1491,11 +1492,44 @@ function restoreMediaSearchState(){
   }catch(e){}
 }
 
+// The field takes several keywords, split on "," or the full-width "，" a Vietnamese keyboard types.
+// Mirrors the phone app (Search.kt): trimmed, blanks dropped, repeats dropped by lower-cased,
+// whitespace-collapsed spelling, first spelling kept.
+const normalizedKeyword=k=>k.trim().split(/\s+/).filter(Boolean).join(' ').toLowerCase();
+function keywordsIn(text){
+  const seen=new Set(),out=[];
+  for(const part of text.split(/[,，]/)){
+    const k=part.trim();
+    if(!k)continue;
+    const n=normalizedKeyword(k);
+    if(seen.has(n))continue;
+    seen.add(n);out.push(k);
+  }
+  return out;
+}
+// Every list's first, then every list's second, and so on; a video already placed is dropped
+// wherever it comes up again, so the first in round-robin order wins.
+function mixInterleaved(lists){
+  const seen=new Set(),mixed=[];
+  const longest=Math.max(0,...lists.map(l=>l.length));
+  for(let round=0;round<longest;round++){
+    for(const list of lists){
+      const r=list[round];
+      if(r&&!seen.has(r.video_id)){seen.add(r.video_id);mixed.push(r);}
+    }
+  }
+  return mixed;
+}
+
+// Bumped by every keystroke and every search, so an answer that comes back after the text has moved
+// on is dropped instead of overwriting the newer one.
+let mediaSearchSeq=0;
 function onMediaSearchInput(){
   clearTimeout(mediaSearchTimer);
-  const q=$('mediaSearch').value.trim();
+  mediaSearchSeq++;
+  const q=$('mediaSearch').value;
   // Show the spinner during the debounce too, so typing feels responsive instead of dead for 400ms.
-  setSearching(!!q);
+  setSearching(keywordsIn(q).length>0);
   mediaSearchTimer=setTimeout(()=>mediaSearch(q),SEARCH_DEBOUNCE_MS);
 }
 function clearMediaSearch(){
@@ -1513,19 +1547,31 @@ function setSearching(on){
     $('mediaResults').innerHTML=`<div class="media-empty">${SVG_NOTE}<span>Đang tìm…</span></div>`;
   }
 }
-async function mediaSearch(q){
-  if(!q){setSearching(false);mediaSearchResultsCache=[];mediaResultsCache=[];lastDisplayedSig=JSON.stringify(mediaResultsCache);renderMediaResults();saveMediaSearchState();return;}
+function setMediaNote(msg){$('mediaNote').textContent=msg;$('mediaNote').hidden=!msg;}
+async function searchKeyword(k){
   try{
-    const j=await(await fetch('/api/media/search?q='+encodeURIComponent(q))).json();
-    mediaSearchResultsCache=j.ok?j.results:[];
-    // Show immediately -- if a session happens to be active, the next poll tick (within 1s) swaps
-    // the list back to the live queue, which is a fine, self-correcting, rare-case blip.
-    mediaResultsCache=mediaSearchResultsCache;
-    lastDisplayedSig=JSON.stringify(mediaResultsCache);
-    renderMediaResults(j.ok?null:j.error);
-    saveMediaSearchState();
-  }catch(e){mediaSearchResultsCache=[];mediaResultsCache=[];renderMediaResults('Lỗi tìm kiếm');}
-  finally{setSearching(false);}
+    const j=await(await fetch('/api/media/search?q='+encodeURIComponent(k))).json();
+    return j.ok?{ok:true,results:j.results||[]}:{ok:false,error:j.error};
+  }catch(e){return {ok:false,error:'Lỗi tìm kiếm'};}
+}
+async function mediaSearch(text){
+  const seq=++mediaSearchSeq;
+  const keywords=keywordsIn(text);
+  if(!keywords.length){setMediaNote('');setSearching(false);mediaSearchResultsCache=[];mediaResultsCache=[];lastDisplayedSig=JSON.stringify(mediaResultsCache);renderMediaResults();saveMediaSearchState();return;}
+  const answers=await Promise.all(keywords.map(searchKeyword));
+  if(seq!==mediaSearchSeq)return;   // the text changed while this was in flight; the newer search owns the screen
+  const failed=keywords.filter((k,i)=>!answers[i].ok);
+  mediaSearchResultsCache=mixInterleaved(answers.map(a=>a.ok?a.results:[]));
+  // Show immediately -- if a session happens to be active, the next poll tick (within 1s) swaps
+  // the list back to the live queue, which is a fine, self-correcting, rare-case blip.
+  mediaResultsCache=mediaSearchResultsCache;
+  lastDisplayedSig=JSON.stringify(mediaResultsCache);
+  // One keyword reports its own error in place of the list; with several, a failure only names the
+  // keyword so the others' songs stay on screen.
+  setMediaNote(keywords.length>1&&failed.length?'Không tìm được: '+failed.join(', '):'');
+  renderMediaResults(failed.length===keywords.length?answers[0].error:null);
+  saveMediaSearchState();
+  setSearching(false);
 }
 function renderMediaResults(err){
   const el=$('mediaResults');
@@ -1613,7 +1659,7 @@ function renderNowPlaying(s){
   // Only re-render when the list actually changes (not every poll tick) to avoid flicker/scroll-jank;
   // button/ring states still refresh every tick via applyMediaButtonStates.
   const sessionActive=(s.state==='playing'||s.state==='downloading'||s.state==='paused');
-  const searching=!!$('mediaSearch').value.trim();
+  const searching=keywordsIn($('mediaSearch').value).length>0;
   const list=searching?mediaSearchResultsCache:(sessionActive?(s.queue||[]):mediaSearchResultsCache);
   const sig=JSON.stringify(list);
   if(sig!==lastDisplayedSig){lastDisplayedSig=sig;mediaResultsCache=list;renderMediaResults();}
